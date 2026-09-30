@@ -434,14 +434,15 @@ body.touch .controls-info{display:none;}
   </div>
   <div class="online-panel">
     <div class="set-sec-title">创建房间</div>
-    <div class="menu-tag" style="text-align:left;margin:0">你当房主，生成房间号发给好友，满员后一起选车开跑。</div>
+    <div class="menu-tag" style="text-align:left;margin:0">你当房主。出现「房间在线」后再把房间号发给好友；<b>建房后请保持游戏开着</b>。</div>
     <button class="neo-btn" id="btn-host">创建房间</button>
     <div class="room-code-big hidden" id="room-code-display">————</div>
+    <button class="ghost-btn hidden" id="btn-copy-room" style="align-self:center">复制房间号</button>
   </div>
   <div class="online-panel">
     <div class="set-sec-title">加入房间</div>
     <div class="online-row">
-      <input id="room-join-input" maxlength="8" placeholder="输入房间号" spellcheck="false">
+      <input id="room-join-input" maxlength="64" placeholder="粘贴完整房间号" spellcheck="false">
       <button class="neo-btn magenta" id="btn-join">加入</button>
     </div>
   </div>
@@ -477,7 +478,7 @@ body.touch .controls-info{display:none;}
   <div class="tbtn" id="t-item">道具</div>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="vendor/peerjs.min.js"></script><script>window.Peer||document.write('<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"><\/script>')</script>
 <script>
 'use strict';
 /* ============================================================
@@ -2164,26 +2165,36 @@ const Net={
   peer:null, conn:null,
   roomCode:null, guestName:null, guestCharIdx:null,
   guestInput:null, lastState:null, _ending:false, _inputAcc:0, _stateAcc:0,
-  cleanupSoft(){
-    // 回菜单时保留连接可选；彻底清理见 destroy
+  _brokerIdx:0, _joinTries:0, _joinCode:'', _hostReady:false,
+  BROKERS:[
+    { host:'0.peerjs.com', port:443, path:'/', secure:true, tag:'0' },
+  ],
+  // tag "d" = Peer 默认云（不写 host）
+  iceConfig:{
+    iceServers:[
+      { urls:'stun:stun.l.google.com:19302' },
+      { urls:'stun:stun1.l.google.com:19302' },
+      { urls:'stun:stun.cloudflare.com:3478' }
+    ]
   },
+  cleanupSoft(){},
   destroy(){
+    this._hostReady=false;
     try{ if(this.conn) this.conn.close(); }catch(e){}
     try{ if(this.peer) this.peer.destroy(); }catch(e){}
-    this.mode=null; this.peer=null; this.conn=null; this.roomCode=null;
+    this.mode=null; this.peer=null; this.conn=null; this.roomCode=null; this._roomToken=null;
     this.guestName=null; this.guestCharIdx=null; this.guestInput=null; this.lastState=null;
-    this._ending=false;
+    this._ending=false; this._joinTries=0; this._joinCode=''; this._forcedBroker=null;
     const disp=$('room-code-display'); if(disp){ disp.classList.add('hidden'); disp.textContent='————'; }
     const go=$('btn-online-go'); if(go) go.classList.add('hidden');
+    const cp=$('btn-copy-room'); if(cp) cp.classList.add('hidden');
   },
-  ensurePeerJs(){
-    return typeof Peer!=='undefined';
-  },
-  makeCode(){
-    const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let s='NK';
-    for(let i=0;i<4;i++) s+=chars[(Math.random()*chars.length)|0];
-    return s;
+  ensurePeerJs(){ return typeof Peer!=='undefined'; },
+  peerOptions(broker){
+    return {
+      host:broker.host, port:broker.port, path:broker.path, secure:!!broker.secure,
+      debug:1, config:this.iceConfig, pingInterval:4000
+    };
   },
   send(obj){
     if(this.conn&&this.conn.open) try{ this.conn.send(obj); }catch(e){}
@@ -2252,71 +2263,155 @@ const Net={
       }
     }else if(msg.type==='state'&&this.mode==='guest'){
       this.lastState=msg;
-      if(!karts.length&&msg.karts){ /* ignore */ }
     }
   },
   bindConn(conn){
     this.conn=conn;
     conn.on('open',()=>{
       if(this.mode==='guest'){
+        this._joinTries=99; // stop retries
         this.send({type:'hello', name:LB.getNick(), charIdx:selectedIdx});
-        setOnlineStatus('正在握手…','ok');
+        setOnlineStatus('握手成功，正在进入房间…','ok');
       }else{
         setOnlineStatus('对手连入中…','ok');
       }
     });
     conn.on('data', d=>this.onData(d));
-    conn.on('close',()=>{
-      setOnlineStatus('连接已断开','err');
-      if(STATE==='race'||STATE==='countdown'){ /* keep playing vs AI */ this.mode=this.mode==='host'?'host':null; }
+    conn.on('close',()=>setOnlineStatus('连接已断开（可返回联机页重进）','err'));
+    conn.on('error', err=>{
+      const t=err&&err.type||'unknown';
+      if(t==='peer-unavailable') this._retryJoin(t);
+      else setOnlineStatus('连接错误：'+t,'err');
     });
-    conn.on('error', err=>setOnlineStatus('连接错误：'+(err&&err.type||'unknown'),'err'));
+  },
+  _showRoom(id, tag){
+    this.roomCode=id; this._hostReady=true;
+    // 房间令牌 = 信令标记~peerId，保证双方连同一台信令
+    this._roomToken=(tag||'d')+'~'+id;
+    const disp=$('room-code-display');
+    disp.textContent=this._roomToken; disp.classList.remove('hidden');
+    disp.style.fontSize='clamp(14px,2.4vw,22px)';
+    disp.style.letterSpacing='.06em';
+    disp.style.wordBreak='break-all';
+    const cp=$('btn-copy-room'); if(cp) cp.classList.remove('hidden');
+    setOnlineStatus('房间在线 · 请复制完整房间号（含前面的数字/~）发给好友','ok');
+  },
+  _parseRoomToken(raw){
+    const s=(raw||'').trim();
+    if(s.includes('~')){
+      const i=s.indexOf('~');
+      return { tag:s.slice(0,i)||'d', id:s.slice(i+1) };
+    }
+    // 兼容旧版纯 ID
+    return { tag:'d', id:s };
+  },
+  _createPeerByTag(tag){
+    if(tag==='0'||tag==='1'){
+      const b=this.BROKERS[parseInt(tag,10)]||this.BROKERS[0];
+      return new Peer(this.peerOptions(b));
+    }
+    return new Peer({ debug:1, config:this.iceConfig, pingInterval:4000 });
+  },
+  _startHostBroker(step){
+    // step0 -> broker 0; step1 -> default cloud
+    if(step>1){
+      setOnlineStatus('信令不可用。请换网络/关 VPN 后重试','err');
+      this.mode=null; return;
+    }
+    setOnlineStatus('正在创建房间…');
+    try{ if(this.peer) this.peer.destroy(); }catch(e){}
+    const tag=step===0?'0':'d';
+    this.peer=this._createPeerByTag(tag);
+    let opened=false;
+    this.peer.on('open', id=>{ opened=true; this._brokerIdx=step; this._showRoom(id, tag); });
+    this.peer.on('connection', c=>this.bindConn(c));
+    this.peer.on('disconnected',()=>{
+      if(this._hostReady){
+        setOnlineStatus('信令断开，正在重连…','err');
+        try{ this.peer.reconnect(); }catch(e){}
+      }
+    });
+    this.peer.on('error', err=>{
+      const t=err&&err.type||'';
+      if(!opened && (t==='network'||t==='server-error'||t==='socket-error'||t==='socket-closed'||t==='unavailable-id')){
+        this._startHostBroker(step+1);
+      }else if(opened && t==='network'){
+        try{ this.peer.reconnect(); }catch(e){}
+      }else if(!opened){
+        setOnlineStatus('建房失败：'+t,'err');
+      }
+    });
   },
   host(){
     if(!this.ensurePeerJs()){ setOnlineStatus('联机组件加载失败，请检查网络后重试','err'); return; }
     this.destroy();
     LB.setNick($('nick-input').value);
     this.mode='host';
-    this.roomCode=this.makeCode();
-    setOnlineStatus('正在创建房间…');
-    this.peer=new Peer(this.roomCode,{debug:1});
-    this.peer.on('open', id=>{
-      this.roomCode=id;
-      const disp=$('room-code-display');
-      disp.textContent=id; disp.classList.remove('hidden');
-      setOnlineStatus('房间已创建 · 把房间号发给好友','ok');
-    });
-    this.peer.on('connection', c=>this.bindConn(c));
-    this.peer.on('error', err=>{
-      setOnlineStatus('建房失败：'+(err&&err.type||'请换个房间号重试'),'err');
-      this.mode=null;
-    });
+    this._startHostBroker(0);
+  },
+  _retryJoin(reason){
+    if(this._joinTries>=99) return;
+    this._joinTries++;
+    if(this._joinTries>=8){
+      setOnlineStatus('找不到房间。请确认：房主显示「房间在线」、完整复制房间号、双方不要关页面','err');
+      return;
+    }
+    setOnlineStatus('找不到房间（'+reason+'），重试 '+this._joinTries+'/7 …');
+    setTimeout(()=>this._connectGuestToHost(), 1000+this._joinTries*350);
+  },
+  _connectGuestToHost(){
+    if(!this.peer||this.mode!=='guest'||this._joinTries>=99) return;
+    try{
+      const c=this.peer.connect(this._joinCode,{ reliable:true, serialization:'json' });
+      this.bindConn(c);
+    }catch(e){
+      this._retryJoin('connect');
+    }
   },
   join(){
     if(!this.ensurePeerJs()){ setOnlineStatus('联机组件加载失败，请检查网络后重试','err'); return; }
     LB.setNick($('nick-input').value);
-    const code=($('room-join-input').value||'').trim().toUpperCase();
-    if(code.length<4){ setOnlineStatus('请输入有效房间号','err'); return; }
+    const parsed=this._parseRoomToken($('room-join-input').value);
+    if(!parsed.id||parsed.id.length<3){ setOnlineStatus('请粘贴房主的完整房间号（含前面的 0~ 或 d~）','err'); return; }
     this.destroy();
     this.mode='guest';
-    setOnlineStatus('正在加入 '+code+' …');
-    this.peer=new Peer({debug:1});
-    this.peer.on('open',()=>{
-      const c=this.peer.connect(code,{reliable:true});
-      this.bindConn(c);
+    this._joinCode=parsed.id;
+    this._joinTries=0;
+    setOnlineStatus('正在连接信令并查找房间…');
+    try{ if(this.peer) this.peer.destroy(); }catch(e){}
+    this.peer=this._createPeerByTag(parsed.tag);
+    let opened=false;
+    this.peer.on('open', ()=>{
+      opened=true;
+      setOnlineStatus('信令已通，正在查找房主…');
+      this._connectGuestToHost();
     });
     this.peer.on('error', err=>{
-      setOnlineStatus('加入失败：'+(err&&err.type||'检查房间号与网络'),'err');
-      this.mode=null;
+      const t=err&&err.type||'';
+      if(t==='peer-unavailable') this._retryJoin(t);
+      else if(!opened && (t==='network'||t==='server-error'||t==='socket-error'||t==='socket-closed')){
+        // 同 tag 连不上时，再试默认云（但房间可能不在默认云——提示用户让房主重建）
+        setOnlineStatus('信令连接失败：'+t+'。请让房主重新创建房间后再加入','err');
+      }else if(t!=='peer-unavailable'){
+        setOnlineStatus('加入失败：'+t,'err');
+      }
     });
   },
   openLobby(){
     $('nick-input').value=LB.getNick();
-    setOnlineStatus('支持 2 人联机 · AI 补位成 5 车大战');
+    setOnlineStatus('房主先到「房间在线」，再复制完整房间号；加入方原样粘贴');
     setState('online');
   },
   notifyChar(){
     if(this.mode==='guest'&&this.conn) this.send({type:'char', charIdx:selectedIdx, name:LB.getNick()});
+  },
+  copyRoom(){
+    const id=this._roomToken||this.roomCode||'';
+    if(!id||id==='————') return;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(id).then(()=>setOnlineStatus('房间号已复制，发给好友即可','ok'))
+        .catch(()=>{ prompt('复制房间号：', id); });
+    }else prompt('复制房间号：', id);
   }
 };
 
@@ -2329,8 +2424,13 @@ $('btn-lb-clear').addEventListener('click',()=>{ if(confirm('确定清空本机�
 $('btn-online-back').addEventListener('click',()=>{ Net.destroy(); setState('menu'); });
 $('btn-host').addEventListener('click',()=>Net.host());
 $('btn-join').addEventListener('click',()=>Net.join());
+$('btn-copy-room').addEventListener('click',()=>Net.copyRoom());
 $('btn-online-go').addEventListener('click',()=>{
   LB.setNick($('nick-input').value);
+  if(Net.mode==='host'&&!Net._hostReady){
+    setOnlineStatus('请等待「房间在线」后再进入选车','err');
+    return;
+  }
   Net.notifyChar();
   setState('select');
 });
