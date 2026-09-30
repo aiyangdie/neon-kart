@@ -117,8 +117,35 @@ body.online-party .party-bar{display:grid;}
 .party-chip.human{border-color:rgba(37,230,255,.4);}
 .party-chip .pc-name{font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .party-chip .pc-char{color:var(--muted);font-size:10px;}
+.match-summary{
+  width:100%;max-width:920px;display:none;grid-template-columns:repeat(3,1fr);gap:8px;
+}
+.match-summary.on{display:grid;}
+.ms-card{
+  border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:10px 12px;text-align:center;
+}
+.ms-card b{display:block;font-family:var(--font-display);font-size:22px;color:var(--cyan);margin-top:2px;}
+.ms-card span{font-size:11px;letter-spacing:.12em;color:var(--muted);}
+#match-lock{
+  position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;
+  background:rgba(4,6,14,.82);backdrop-filter:blur(4px);
+}
+#match-lock.show{display:flex;}
+#match-lock .ml-title{font-family:var(--font-display);font-weight:900;font-size:clamp(28px,5vw,48px);letter-spacing:.18em;color:var(--cyan);}
+#match-lock .ml-sub{color:var(--muted);font-size:14px;letter-spacing:.1em;}
+#match-lock .ml-num{font-family:var(--font-display);font-weight:900;font-size:90px;color:var(--yellow);text-shadow:0 0 40px rgba(255,210,63,.55);}
+.lobby-slot.ready{border-color:rgba(93,255,143,.55);box-shadow:0 0 14px rgba(93,255,143,.18);}
+.ls-tag.ready{color:#5dff8f;border-color:rgba(93,255,143,.5);}
+.conn-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#8494b8;margin-right:6px;vertical-align:middle;}
+.conn-dot.on{background:#5dff8f;box-shadow:0 0 8px rgba(93,255,143,.8);}
+.conn-dot.warn{background:var(--yellow);}
+#online-connect-panel.in-room .online-entry{display:none;}
+#online-connect-panel.in-room #btn-copy-room{display:inline-block !important;}
+#online-connect-panel.in-room #match-entry-title::after{content:' · 房间已锁定';}
+.room-code-short{font-family:var(--font-display);font-size:13px;color:var(--muted);text-align:center;letter-spacing:.08em;}
 .nick-row{display:flex;gap:10px;align-items:center;width:100%;max-width:560px;}
 .nick-row label{font-size:13px;color:var(--muted);white-space:nowrap;}
+
 
 .lb-row{
   display:grid;grid-template-columns:42px 1fr auto auto;gap:10px;align-items:center;
@@ -467,33 +494,46 @@ body.touch .controls-info{display:none;}
 
 <!-- ===== 联机大厅 ===== -->
 <div id="online-lobby" class="screen hidden" style="justify-content:flex-start;padding-top:28px;gap:14px;overflow-y:auto">
-  <div class="screen-title">联机<span>竞速</span></div>
-  <div class="menu-tag">最多 <b>6</b> 名真人 · 空位自动变人机 · 大家都能看到彼此选了谁</div>
+  <div class="screen-title">联机<span>匹配</span></div>
+  <div class="menu-tag">最多 <b>6</b> 真人 · 空位人机 · 选车互相可见 · 全员就绪后开赛更稳</div>
   <div class="nick-row">
     <label>车手昵称</label>
     <input class="nick-input" id="nick-input" maxlength="12" placeholder="输入昵称">
   </div>
   <div class="online-panel" id="online-connect-panel">
-    <div class="set-sec-title">房间</div>
-    <div class="menu-tag" style="text-align:left;margin:0">房主创建后等「房间在线」，复制完整房间号；加入方粘贴加入。</div>
-    <div class="online-row">
+    <div class="set-sec-title" id="match-entry-title">匹配入口</div>
+    <div class="menu-tag online-entry" style="text-align:left;margin:0">房主创建房间并复制房间号；队友粘贴加入。双方需保持页面打开。</div>
+    <div class="online-row online-entry">
       <button class="neo-btn" id="btn-host">创建房间</button>
       <button class="ghost-btn" id="btn-copy-room" style="display:none">复制房间号</button>
     </div>
     <div class="room-code-big hidden" id="room-code-display">————</div>
-    <div class="online-row">
-      <input id="room-join-input" maxlength="64" placeholder="粘贴完整房间号" spellcheck="false">
-      <button class="neo-btn magenta" id="btn-join">加入</button>
+    <div class="room-code-short hidden" id="room-code-hint"></div>
+    <div class="online-row online-entry" id="join-row">
+      <input id="room-join-input" maxlength="64" placeholder="粘贴完整房间号" spellcheck="false" autocomplete="off">
+      <button class="neo-btn magenta" id="btn-join">加入匹配</button>
     </div>
   </div>
-  <div class="set-sec-title" id="roster-title" style="display:none">赛道席位 · 6</div>
+  <div class="match-summary" id="match-summary">
+    <div class="ms-card"><span>真人</span><b id="ms-humans">0</b></div>
+    <div class="ms-card"><span>已就绪</span><b id="ms-ready">0</b></div>
+    <div class="ms-card"><span>人机补位</span><b id="ms-ai">6</b></div>
+  </div>
+  <div class="set-sec-title" id="roster-title" style="display:none"><span class="conn-dot" id="conn-dot"></span>匹配席位</div>
   <div class="lobby-roster hidden" id="lobby-roster"></div>
-  <div class="online-status" id="online-status">先创建或加入房间，再选车开跑</div>
+  <div class="online-status" id="online-status">创建或加入房间，开始匹配</div>
   <div class="select-btns">
     <button class="ghost-btn" id="btn-online-back">返回</button>
     <button class="neo-btn hidden" id="btn-online-pick">选择车手</button>
-    <button class="neo-btn magenta hidden" id="btn-online-start">开始比赛</button>
+    <button class="ghost-btn hidden" id="btn-online-ready">我准备好了</button>
+    <button class="neo-btn magenta hidden" id="btn-online-start">开始匹配开赛</button>
   </div>
+</div>
+
+<div id="match-lock">
+  <div class="ml-title">匹配成功</div>
+  <div class="ml-sub" id="match-lock-sub">锁定阵容 · 即将发车</div>
+  <div class="ml-num" id="match-lock-num">3</div>
 </div>
 
 <!-- ===== 积分排行榜 ===== -->
@@ -1786,22 +1826,16 @@ function startRace(){
 function startOnlineRace(){
   if(Net.mode==='guest'){
     Net.setReady(true);
-    setOnlineStatus('已就绪 · 等待房主开始比赛','ok');
+    setOnlineStatus('已就绪 · 等待房主开始匹配开赛','ok');
     setState('online');
     Net.renderRoster();
     return;
   }
   if(Net.mode!=='host') return;
-  // 更新房主自己的选车
+  if(Net.matchLocking) return;
   Net.updateLocalChar(selectedIdx, LB.getNick());
-  const lineup=Net.buildLineup();
-  Net.broadcastAll({type:'race_start', lineup});
-  buildOnlineKarts(lineup);
-  initItemBoxes();
-  particles.length=0; skidmarks.length=0;
-  endTimer=0; raceClock=0;
-  setState('countdown');
-  runCountdown();
+  Net.setReady(true);
+  Net.beginMatch();
 }
 function buildOnlineKarts(lineup){
   karts=lineup.map(slot=>{
@@ -2218,7 +2252,7 @@ const Net={
   players:[],
   inputs:{},
   lastState:null, _ending:false, _inputAcc:0, _stateAcc:0,
-  _joinTries:0, _joinCode:'', _hostReady:false, _roomToken:null, roomCode:null,
+  _joinTries:0, _joinCode:'', _hostReady:false, _roomToken:null, roomCode:null, matchLocking:false, _hbTimer:null, _lastPong:0,
   BROKERS:[{ host:'0.peerjs.com', port:443, path:'/', secure:true, tag:'0' }],
   iceConfig:{ iceServers:[
     { urls:'stun:stun.l.google.com:19302' },
@@ -2227,7 +2261,9 @@ const Net={
   ]},
   cleanupSoft(){},
   destroy(){
-    this._hostReady=false;
+    this._hostReady=false; this.matchLocking=false;
+    if(this._hbTimer){ clearInterval(this._hbTimer); this._hbTimer=null; }
+    const lock=$('match-lock'); if(lock) lock.classList.remove('show');
     Object.values(this.conns).forEach(c=>{ try{c.close();}catch(e){} });
     try{ if(this.conn) this.conn.close(); }catch(e){}
     try{ if(this.peer) this.peer.destroy(); }catch(e){}
@@ -2236,12 +2272,93 @@ const Net={
     this.roomCode=null; this._roomToken=null; this._ending=false; this._joinTries=0; this._joinCode='';
     document.body.classList.remove('online-party');
     const disp=$('room-code-display'); if(disp){ disp.classList.add('hidden'); disp.textContent='————'; }
+    const hint=$('room-code-hint'); if(hint){ hint.classList.add('hidden'); hint.textContent=''; }
     const cp=$('btn-copy-room'); if(cp) cp.style.display='none';
     const pick=$('btn-online-pick'); if(pick) pick.classList.add('hidden');
+    const readyBtn=$('btn-online-ready'); if(readyBtn) readyBtn.classList.add('hidden');
     const st=$('btn-online-start'); if(st) st.classList.add('hidden');
     const rt=$('roster-title'); if(rt) rt.style.display='none';
     const ro=$('lobby-roster'); if(ro){ ro.classList.add('hidden'); ro.innerHTML=''; }
+    const ms=$('match-summary'); if(ms) ms.classList.remove('on');
+    const panel=$('online-connect-panel'); if(panel){ panel.style.display=''; panel.classList.remove('in-room'); }
+    this.setConnDot(false);
     this.renderPartyBar();
+  },
+  setRoomUI(on){
+    const panel=$('online-connect-panel');
+    if(panel){ panel.style.display=''; panel.classList.toggle('in-room', !!on); }
+    const title=$('match-entry-title');
+    if(title) title.textContent=on?'当前房间':'匹配入口';
+  },
+  setConnDot(on, warn){
+    const d=$('conn-dot'); if(!d) return;
+    d.className='conn-dot'+(on?(warn?' warn':' on'):'');
+  },
+  startHeartbeat(){
+    if(this._hbTimer) clearInterval(this._hbTimer);
+    this._lastPong=Date.now();
+    this._hbTimer=setInterval(()=>{
+      if(!this.mode) return;
+      if(this.mode==='guest') this.broadcastAll({type:'ping', t:Date.now()});
+      if(this.mode==='host'){
+        // host marks live if has peer open
+        this.setConnDot(!!(this.peer&&!this.peer.destroyed), false);
+        this.broadcastAll({type:'host_tick', humans:this.players.length, ready:this.players.filter(p=>p.ready).length});
+      }else{
+        const lag=Date.now()-this._lastPong;
+        this.setConnDot(lag<8000, lag>4000);
+      }
+      this.renderMatchSummary();
+    }, 2500);
+  },
+  renderMatchSummary(){
+    const box=$('match-summary'); if(!box) return;
+    if(!this.mode||!this.players.length){ box.classList.remove('on'); return; }
+    box.classList.add('on');
+    const h=this.players.length;
+    const r=this.players.filter(p=>p.ready).length;
+    const ai=Math.max(0, KART_COUNT-h);
+    const eh=$('ms-humans'), er=$('ms-ready'), ea=$('ms-ai');
+    if(eh) eh.textContent=h+'/'+MAX_HUMANS;
+    if(er) er.textContent=r+'/'+h;
+    if(ea) ea.textContent=String(ai);
+  },
+  beginMatch(){
+    if(this.mode!=='host'||this.matchLocking) return;
+    const notReady=this.players.filter(p=>!p.isHost&&!p.ready);
+    if(notReady.length){
+      const ok=confirm('还有 '+notReady.length+' 人未就绪：\n'+notReady.map(p=>p.name).join('、')+'\n\n仍要强制开赛吗？');
+      if(!ok) return;
+    }
+    this.matchLocking=true;
+    const lineup=this.buildLineup();
+    const names=lineup.filter(s=>s.role!=='ai').map(s=>s.name+'('+CHARACTERS[s.charIdx].name+')').join(' · ');
+    this.broadcastAll({type:'match_lock', lineup, names, seconds:3});
+    this.runMatchLock(lineup, names, 3);
+  },
+  runMatchLock(lineup, names, seconds){
+    this.matchLocking=true;
+    const lock=$('match-lock'), num=$('match-lock-num'), sub=$('match-lock-sub');
+    if(lock) lock.classList.add('show');
+    if(sub) sub.textContent=(names||'阵容已锁定')+' · 空位人机补齐';
+    let left=Math.max(1, seconds|0);
+    const go=()=>{
+      if(lock) lock.classList.remove('show');
+      this.matchLocking=false;
+      if(!lineup||!lineup.length) return;
+      if(this.mode==='host') this.broadcastAll({type:'race_start', lineup});
+      buildOnlineKarts(lineup);
+      initItemBoxes(); particles.length=0; skidmarks.length=0;
+      endTimer=0; raceClock=0;
+      setState('countdown'); runCountdown();
+    };
+    const tick=()=>{
+      if(num) num.textContent=String(left);
+      if(left<=0){ go(); return; }
+      left--;
+      setTimeout(tick, 1000);
+    };
+    tick();
   },
   ensurePeerJs(){ return typeof Peer!=='undefined'; },
   peerOptions(broker){
@@ -2317,7 +2434,13 @@ const Net={
     if(me) me.ready=!!v;
     if(this.mode==='host') this.syncLobby();
     else this.broadcastAll({ type:'ready', pid:this.myId, ready:!!v });
-    this.renderRoster();
+    this.renderRoster(); this.renderMatchSummary(); this.updateLobbyButtons();
+  },
+  toggleReady(){
+    const me=this.players.find(p=>p.id===this.myId);
+    if(!me) return;
+    this.setReady(!me.ready);
+    setOnlineStatus(me.ready?'已就绪 · 等待房主开赛':'已取消就绪','ok');
   },
   buildLineup(){
     const humans=this.players.slice(0, MAX_HUMANS).map(p=>({
@@ -2341,7 +2464,7 @@ const Net={
   },
   renderRoster(){
     const box=$('lobby-roster'); if(!box) return;
-    if(!this.mode||!this.players.length){ box.classList.add('hidden'); return; }
+    if(!this.mode||!this.players.length){ box.classList.add('hidden'); this.renderMatchSummary(); return; }
     box.classList.remove('hidden');
     const title=$('roster-title'); if(title) title.style.display='block';
     const humans=this.players;
@@ -2351,19 +2474,23 @@ const Net={
         const p=humans[i];
         const ch=CHARACTERS[p.charIdx|0]||CHARACTERS[0];
         const me=p.id===this.myId;
-        html+='<div class="lobby-slot human'+(me?' me':'')+'">'
+        const readyCls=p.ready?' ready':'';
+        const tagCls=p.ready?'ready':(p.isHost?'host':'human');
+        const tagTxt=p.ready?'就绪':(p.isHost?'房主':'待就绪');
+        html+='<div class="lobby-slot human'+(me?' me':'')+readyCls+'">'
           +'<div class="ls-top"><span class="ls-seat">座位 '+(i+1)+'</span>'
-          +'<span class="ls-tag '+(p.isHost?'host':'human')+'">'+(p.isHost?'房主':'真人')+(p.ready?' · 就绪':'')+'</span></div>'
-          +'<div class="ls-name">'+(p.name||'车手')+(me?'（我）':'')+'</div>'
+          +'<span class="ls-tag '+tagCls+'">'+tagTxt+'</span></div>'
+          +'<div class="ls-name">'+(p.name||'车手')+(me?'（我）':'')+(p.isHost?' · 房主':'')+'</div>'
           +'<div class="ls-char">车手 <b style="color:'+ch.color+'">'+ch.name+' · '+ch.title+'</b></div></div>';
       }else{
         html+='<div class="lobby-slot ai"><div class="ls-top"><span class="ls-seat">座位 '+(i+1)+'</span>'
-          +'<span class="ls-tag ai">人机</span></div>'
-          +'<div class="ls-name">等待加入 / 开赛补位</div>'
-          +'<div class="ls-char">未选真人则由 AI 驾驶</div></div>';
+          +'<span class="ls-tag ai">人机补位</span></div>'
+          +'<div class="ls-name">空位 · 开赛自动填入</div>'
+          +'<div class="ls-char">等待真人加入，或由 AI 驾驶</div></div>';
       }
     }
     box.innerHTML=html;
+    this.renderMatchSummary();
   },
   renderPartyBar(){
     const bar=$('party-bar'); if(!bar) return;
@@ -2384,13 +2511,25 @@ const Net={
     bar.innerHTML=html;
   },
   updateLobbyButtons(){
-    const pick=$('btn-online-pick'), start=$('btn-online-start');
+    const pick=$('btn-online-pick'), start=$('btn-online-start'), ready=$('btn-online-ready');
     if(!pick||!start) return;
     if(this.mode&&this._hostReady){
       pick.classList.remove('hidden');
-      if(this.mode==='host') start.classList.remove('hidden');
-      else start.classList.add('hidden');
-    }else{ pick.classList.add('hidden'); start.classList.add('hidden'); }
+      if(ready){
+        const me=this.players.find(p=>p.id===this.myId);
+        ready.classList.remove('hidden');
+        ready.className=me&&me.ready?'neo-btn':'ghost-btn';
+        ready.textContent=me&&me.ready?'取消就绪':'我准备好了';
+      }
+      if(this.mode==='host'){
+        start.classList.remove('hidden');
+        const h=this.players.length, r=this.players.filter(p=>p.ready).length;
+        start.textContent=r>=h?'开始匹配开赛':'强制开赛 ('+r+'/'+h+' 就绪)';
+      }else start.classList.add('hidden');
+    }else{
+      pick.classList.add('hidden'); start.classList.add('hidden');
+      if(ready) ready.classList.add('hidden');
+    }
   },
   onData(msg, fromPid){
     if(!msg||!msg.type) return;
@@ -2412,8 +2551,10 @@ const Net={
     }else if(msg.type==='welcome'&&this.mode==='guest'){
       this.myId=msg.yourId||this.myId;
       this.setPlayers(msg.players||[]);
-      setOnlineStatus('已进入房间 · 选车后所有人都能看到','ok');
+      setOnlineStatus('已进入房间 · 选车后点「我准备好了」','ok');
       this._hostReady=true; this.updateLobbyButtons();
+      this._lastPong=Date.now(); this.startHeartbeat(); this.setConnDot(true);
+      this.setRoomUI(true);
     }else if(msg.type==='lobby'){
       this.setPlayers(msg.players||[]);
     }else if(msg.type==='char'&&this.mode==='host'){
@@ -2424,11 +2565,24 @@ const Net={
       const p=this.players.find(x=>x.id===(msg.pid||fromPid));
       if(p) p.ready=!!msg.ready;
       this.syncLobby();
+    }else if(msg.type==='match_lock'){
+      if(STATE==='countdown'||STATE==='race') return;
+      this.runMatchLock(msg.lineup, msg.names, msg.seconds||3);
     }else if(msg.type==='race_start'&&this.mode==='guest'){
+      if(this.matchLocking||STATE==='countdown'||STATE==='race') return;
       buildOnlineKarts(msg.lineup);
       initItemBoxes(); particles.length=0; skidmarks.length=0;
       endTimer=0; raceClock=0;
       setState('countdown'); runCountdown();
+    }else if(msg.type==='ping'){
+      this.broadcastAll({type:'pong', t:msg.t||Date.now()});
+    }else if(msg.type==='pong'){
+      this._lastPong=Date.now();
+      this.setConnDot(true, false);
+    }else if(msg.type==='host_tick'&&this.mode==='guest'){
+      this._lastPong=Date.now();
+      this.setConnDot(true, false);
+      if(msg.humans!=null) this.renderMatchSummary();
     }else if(msg.type==='input'&&this.mode==='host'){
       const pid=msg.pid||fromPid;
       this.inputs[pid]=msg.input||null;
@@ -2480,8 +2634,15 @@ const Net={
     disp.style.fontSize='clamp(14px,2.4vw,22px)';
     disp.style.letterSpacing='.06em';
     disp.style.wordBreak='break-all';
+    const hint=$('room-code-hint');
+    if(hint){
+      hint.textContent='短码提示：末尾 '+(id.slice(-6).toUpperCase())+' · 请复制完整房间号发给队友';
+      hint.classList.remove('hidden');
+    }
     const cp=$('btn-copy-room'); if(cp) cp.style.display='inline-block';
+    this.setRoomUI(true);
     setOnlineStatus('房间在线 · 可多人加入（最多6真人，空位人机）','ok');
+    this.setConnDot(true); this.startHeartbeat();
     this.syncLobby();
   },
   _parseRoomToken(raw){
@@ -2583,6 +2744,17 @@ $('btn-online-start').addEventListener('click',()=>{
   Net.updateLocalChar(selectedIdx, LB.getNick());
   AudioSys.ensure();
   startOnlineRace();
+});
+$('btn-online-ready').addEventListener('click',()=>{
+  if(!Net.mode||!Net._hostReady){ setOnlineStatus('请先创建或加入房间','err'); return; }
+  LB.setNick($('nick-input').value);
+  const me=Net.players.find(p=>p.id===Net.myId);
+  const next=!me||!me.ready;
+  if(me){ me.charIdx=selectedIdx|0; me.name=LB.getNick()||me.name; }
+  if(Net.mode==='host') Net.syncLobby();
+  else Net.broadcastAll({ type:'char', pid:Net.myId, charIdx:selectedIdx|0, name:LB.getNick() });
+  Net.setReady(next);
+  setOnlineStatus(next?'已就绪 · 等待房主开赛':'已取消就绪','ok');
 });
 $('nick-input').addEventListener('change',()=>LB.setNick($('nick-input').value));
 $('btn-back').addEventListener('click',()=>{
