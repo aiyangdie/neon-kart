@@ -229,6 +229,24 @@ kbd{
 .pos-1{color:var(--yellow);}
 .pos-front{color:var(--cyan);}
 .pos-back{color:var(--muted);}
+#hud-speed{font-size:12px;color:var(--muted);margin-top:2px;letter-spacing:.08em;}
+#hud-speed b{color:var(--text);font-family:var(--font-display);}
+#race-board{
+  position:absolute;top:14px;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;gap:3px;min-width:168px;max-width:42vw;
+  pointer-events:none;z-index:5;
+}
+.rb-row{
+  display:grid;grid-template-columns:18px 1fr auto;gap:6px;align-items:center;
+  padding:3px 8px;border-radius:5px;background:rgba(8,12,24,.72);border:1px solid rgba(132,148,184,.2);
+  font-size:11px;letter-spacing:.04em;white-space:nowrap;
+}
+.rb-row.me{border-color:rgba(255,210,63,.55);background:rgba(30,24,8,.78);}
+.rb-row.fin{opacity:.55;}
+.rb-pos{font-family:var(--font-display);font-weight:700;color:var(--muted);font-size:10px;}
+.rb-row.me .rb-pos{color:var(--yellow);}
+.rb-name{overflow:hidden;text-overflow:ellipsis;color:var(--text);}
+.rb-gap{color:var(--muted);font-size:10px;font-variant-numeric:tabular-nums;}
 #minimap{position:absolute;left:14px;bottom:14px;width:168px;height:168px;border-radius:10px;}
 #hud-bottom{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;align-items:flex-end;gap:9px;}
 #nitro-wrap{width:210px;}
@@ -356,6 +374,8 @@ body.touch .controls-info{display:none;}
   #minimap{width:96px;height:96px;left:90px;bottom:12px;}
   #hud-bottom{bottom:10px;right:10px;}
   .hud-time{font-size:11px;}
+  #race-board{top:auto;bottom:118px;left:10px;transform:none;max-width:46vw;}
+  #hud-speed{font-size:11px;}
 }
 </style>
 </head>
@@ -376,8 +396,10 @@ body.touch .controls-info{display:none;}
     <div class="hud-time"><span class="t-label">最佳</span><span id="hud-best">--:--.--</span></div>
   </div>
   <div id="hud-topright" class="hud-box">
-    <div id="hud-pos"><span id="hud-posnum">1</span><small>/6</small></div>
+    <div id="hud-pos"><span id="hud-posnum">1</span><small id="hud-posof">/6</small></div>
+    <div id="hud-speed"><b id="hud-spd">0</b> km/h</div>
   </div>
+  <div id="race-board"></div>
   <canvas id="minimap" class="hud-box"></canvas>
   <div id="hud-bottom">
     <div id="item-slot" class="empty">
@@ -1364,6 +1386,22 @@ function drawKart(g,k,t){
     g.beginPath(); g.arc(0,0,25,0,TAU); g.stroke();
     g.restore();
   }
+  // 昵称铭牌（非本机）
+  if(!k.isPlayer && (STATE==='race'||STATE==='countdown')){
+    const label=(k.displayName||k.char.name||'').slice(0,8);
+    if(label){
+      g.save();
+      g.translate(k.x, k.y-34);
+      g.font='bold 11px Microsoft YaHei UI,sans-serif';
+      g.textAlign='center'; g.textBaseline='middle';
+      const tw=g.measureText(label).width;
+      g.fillStyle='rgba(6,10,20,.7)';
+      rrPath(g,-tw/2-5,-8,tw+10,16,4); g.fill();
+      g.fillStyle=k.finished?'#8494b8':(isAiKart(k)?'#b9c6e2':ch.color);
+      g.fillText(label,0,0);
+      g.restore();
+    }
+  }
 }
 /* 道具图标 */
 function drawItemIcon(g,type,t){
@@ -1645,6 +1683,16 @@ function aiControls(k,dt){
     else if(k.item==='shield'){k.item=null;k.shield=5;}
     else if(nearestEnemyAhead(k)){k.item=null;fireMissile(k);}
     k.aiItemCd=1.2+rng()*2.8;
+  }
+  // 脱困：长时间路外或几乎停滞时拉回路心
+  if(k._offroad) k._aiStuck=(k._aiStuck||0)+dt; else k._aiStuck=Math.max(0,(k._aiStuck||0)-dt*1.5);
+  if((k._aiStuck>1.6 && Math.abs(k.speed)<55) || (Math.abs(k.speed)<12 && !k.finished && k.raceTime>2)){
+    const back=pointAtDist(PATH[k.nearIdx].cum+40);
+    k.x=lerp(k.x,back.x,Math.min(1,dt*4));
+    k.y=lerp(k.y,back.y,Math.min(1,dt*4));
+    k.heading+=angDiff(k.heading,Math.atan2(back.ty||Math.sin(k.heading),back.tx||Math.cos(k.heading)))*Math.min(1,dt*5);
+    k.vx=Math.cos(k.heading)*90; k.vy=Math.sin(k.heading)*90;
+    c.up=true; c.down=false; k._aiStuck=0;
   }
   return c;
 }
@@ -1934,6 +1982,8 @@ function updateRace(dt){
   if(p&&p.finished){
     endTimer+=dt;
     if(karts.every(k=>k.finished)||endTimer>6) endRace();
+  }else if(Net.mode==='guest'&&karts.length&&karts.every(k=>k.finished)){
+    endRace();
   }
 }
 function placePoints(pos){
@@ -2068,13 +2118,27 @@ const iconCtx=$('item-icon').getContext('2d');
 let lastIcon='';
 function updateHUD(){
   const p=playerKart(); if(!p)return;
-  $('hud-lap').innerHTML=clamp(p.lap,1,TOTAL_LAPS)+'<small>/'+TOTAL_LAPS+' 圈</small>';
+  const showLap=p.finished?TOTAL_LAPS:clamp(p.lap+1,1,TOTAL_LAPS);
+  $('hud-lap').innerHTML=showLap+'<small>/'+TOTAL_LAPS+' 圈</small>';
   $('hud-cur').textContent=fmtTime(p.raceTime-p.lapStart);
   $('hud-best').textContent=fmtTime(p.bestLap);
-  const ranked=[...karts].sort((a,b)=>b.progress-a.progress);
+  const ranked=[...karts].sort((a,b)=>{
+    if(a.finished&&b.finished) return (a.finishTime||0)-(b.finishTime||0);
+    if(a.finished) return -1;
+    if(b.finished) return 1;
+    return b.progress-a.progress;
+  });
   const pos=ranked.indexOf(p)+1;
   $('hud-posnum').textContent=pos;
-  $('hud-posnum').className=pos===1?'pos-1':pos>=3?'pos-back':'pos-front';
+  $('hud-posnum').className=pos===1?'pos-1':pos<=Math.ceil(karts.length/2)?'pos-front':'pos-back';
+  const of=$('hud-posof'); if(of) of.textContent='/'+Math.max(1,karts.length);
+  const spd=$('hud-spd'); if(spd) spd.textContent=String(Math.max(0,Math.round(Math.abs(p.speed)*1.15)));
+  if(p._lastHudPos!=null && pos!==p._lastHudPos && STATE==='race' && !p.finished && p.raceTime>2.5){
+    if(pos<p._lastHudPos) showToast(pos===1?'领先！':'超车 ↑'+pos,'#5dff8f');
+    else if(pos>p._lastHudPos) showToast('被超 ↓'+pos,'#ff3d8b');
+  }
+  p._lastHudPos=pos;
+  updateRaceBoard(ranked,p);
   const pct=p.nitro|0;
   $('nitro-fill').style.width=pct+'%';
   $('nitro-pct').textContent=pct+'%';
@@ -2085,6 +2149,27 @@ function updateHUD(){
   }else{
     slot.classList.add('empty'); iconCtx.clearRect(0,0,88,88); lastIcon='';
   }
+  const ik=$('item-key');
+  if(ik&&SETTINGS.keys&&SETTINGS.keys.item){
+    const code=SETTINGS.keys.item;
+    ik.textContent=code.replace('Key','').replace('Digit','')||'Q';
+  }
+}
+function updateRaceBoard(ranked, me){
+  const box=$('race-board'); if(!box) return;
+  if(!ranked||!ranked.length){ box.innerHTML=''; return; }
+  const lead=ranked[0];
+  let html='';
+  ranked.forEach((k,i)=>{
+    const mine=k===me;
+    const gap=i===0?'领跑':(k.finished?'完赛':('+'+Math.max(0,Math.round((lead.progress-k.progress)/10))));
+    const nm=(k.displayName||k.char.name||'车手').slice(0,7);
+    html+='<div class="rb-row'+(mine?' me':'')+(k.finished?' fin':'')+'">'
+      +'<span class="rb-pos">'+(i+1)+'</span>'
+      +'<span class="rb-name" style="color:'+(mine?'var(--yellow)':k.char.color)+'">'+nm+'</span>'
+      +'<span class="rb-gap">'+gap+'</span></div>';
+  });
+  box.innerHTML=html;
 }
 /* 小地图 */
 const mm=$('minimap'), mmCtx=mm.getContext('2d');
@@ -2107,15 +2192,20 @@ function drawMinimap(){
   mmCtx.lineWidth=2.2; mmCtx.strokeStyle='rgba(37,230,255,.9)'; mmCtx.stroke();
   for(const k of karts){
     const x=k.x*s+ox, y=k.y*s+oy;
-    if(k.isPlayer){
+    const local=k.isPlayer||(Net.mode&&k.netPid===Net.myId);
+    if(local){
       mmCtx.save(); mmCtx.translate(x,y); mmCtx.rotate(k.heading+Math.PI/2);
       mmCtx.fillStyle=k.char.color;
       mmCtx.beginPath();mmCtx.moveTo(0,-5.6);mmCtx.lineTo(4.2,4.6);mmCtx.lineTo(-4.2,4.6);mmCtx.closePath();mmCtx.fill();
       mmCtx.strokeStyle='#fff';mmCtx.lineWidth=1.2;mmCtx.stroke();
       mmCtx.restore();
     }else{
-      mmCtx.fillStyle=k.char.color;
-      mmCtx.beginPath();mmCtx.arc(x,y,3,0,TAU);mmCtx.fill();
+      mmCtx.fillStyle=k.finished?'#8494b8':k.char.color;
+      mmCtx.beginPath();mmCtx.arc(x,y,isAiKart(k)?2.4:3.2,0,TAU);mmCtx.fill();
+      if(k.netRole==='host'||k.netRole==='guest'){
+        mmCtx.strokeStyle='rgba(255,255,255,.7)'; mmCtx.lineWidth=1;
+        mmCtx.beginPath();mmCtx.arc(x,y,4.2,0,TAU);mmCtx.stroke();
+      }
     }
   }
 }
@@ -2389,7 +2479,7 @@ const Net={
     const eh=$('ms-humans'), er=$('ms-ready'), ea=$('ms-ai');
     if(eh) eh.textContent=h+'/'+MAX_HUMANS;
     if(er) er.textContent=r+'/'+h;
-    if(ea) ea.textContent=String(ai);
+    if(ea) ea.textContent=String(ai)+(ai?' · 共'+(h+ai)+'车':' · 仅真人');
     const tools=$('ai-tools');
     if(tools) tools.classList.toggle('on', this.mode==='host'&&this._hostReady);
   },
@@ -2466,7 +2556,7 @@ const Net={
         nitro:k.nitro,nitroActive:k.nitroActive,item:k.item,shield:k.shield,
         lap:k.lap,finished:k.finished,finishTime:k.finishTime,bestLap:k.bestLap,
         spinout:k.spinout,charId:k.char.id,netRole:k.netRole,netPid:k.netPid,
-        displayName:k.displayName
+        displayName:k.displayName,nearIdx:k.nearIdx,checkStage:k.checkStage,raceTime:k.raceTime
       }))
     });
   },
@@ -2482,6 +2572,10 @@ const Net={
       k.nitro=s.nitro; k.nitroActive=s.nitroActive; k.item=s.item; k.shield=s.shield;
       k.lap=s.lap; k.finished=s.finished; k.finishTime=s.finishTime; k.bestLap=s.bestLap;
       k.spinout=s.spinout;
+      if(s.nearIdx!=null) k.nearIdx=s.nearIdx;
+      if(s.checkStage!=null) k.checkStage=s.checkStage;
+      if(s.raceTime!=null) k.raceTime=s.raceTime;
+      if(s.displayName) k.displayName=s.displayName;
     }
   },
   publicPlayers(){
