@@ -1,0 +1,22 @@
+# Dependencies & build
+node_modules/
+dist/
+out/
+*.log
+.DS_Store
+Thumbs.db
+
+# Local secrets — never commit
+.env
+.env.*
+*.pem
+*credentials*
+*token*
+
+# Release staging (binaries go to GitHub Releases, not git)
+_release/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
