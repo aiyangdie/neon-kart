@@ -1,7 +1,7 @@
 {
   "name": "neon-kart",
   "productName": "霓虹卡丁车",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "霓虹卡丁车 NEON KART — 桌面竞速游戏",
   "main": "electron/main.js",
   "author": "NEON KART",
@@ -37,10 +37,10 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "${productName}-${version}-Setup.${ext}"
+      "artifactName": "NEON-KART-${version}-Setup.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}-${version}-Portable.exe"
+      "artifactName": "NEON-KART-${version}-Portable.exe"
     },
     "nsis": {
       "oneClick": false,
@@ -55,10 +55,10 @@
       "target": ["dmg"],
       "icon": "build/icon.png",
       "category": "public.app-category.games",
-      "artifactName": "${productName}-${version}.${ext}"
+      "artifactName": "NEON-KART-${version}.${ext}"
     },
     "dmg": {
-      "title": "霓虹卡丁车 ${version}"
+      "title": "NEON KART ${version}"
     }
   },
   "devDependencies": {
