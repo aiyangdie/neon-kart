@@ -1,0 +1,68 @@
+{
+  "name": "neon-kart",
+  "productName": "霓虹卡丁车",
+  "version": "1.0.0",
+  "description": "霓虹卡丁车 NEON KART — 桌面竞速游戏",
+  "main": "electron/main.js",
+  "author": "NEON KART",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win nsis portable --publish never",
+    "dist:mac": "electron-builder --mac dmg --publish never"
+  },
+  "build": {
+    "appId": "com.neonkart.desktop",
+    "productName": "霓虹卡丁车",
+    "copyright": "Copyright © NEON KART",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "game/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "霓虹卡丁车",
+      "installerLanguages": ["zh_CN", "en_US"],
+      "language": "2052"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "build/icon.png",
+      "category": "public.app-category.games",
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "dmg": {
+      "title": "霓虹卡丁车 ${version}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  }
+}
