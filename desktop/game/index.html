@@ -64,6 +64,41 @@ canvas#game{position:fixed;inset:0;display:block;}
 .menu-tag{color:var(--muted);font-size:14px;letter-spacing:.1em;text-align:center;line-height:1.9;max-width:560px;}
 .menu-tag b{color:var(--cyan);font-weight:500;}
 .menu-btns{display:flex;flex-direction:column;gap:14px;align-items:center;margin-top:6px;}
+.online-panel,.lb-panel{
+  width:100%;max-width:560px;border:1px solid var(--line);border-radius:12px;
+  background:var(--panel);padding:18px 22px;display:flex;flex-direction:column;gap:12px;
+}
+.online-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.online-row input,.nick-input{
+  flex:1;min-width:140px;font-family:var(--font-display);font-size:15px;letter-spacing:.12em;
+  color:var(--text);background:rgba(0,0,0,.35);border:1px solid rgba(37,230,255,.35);
+  border-radius:6px;padding:11px 14px;outline:none;
+}
+.online-row input:focus,.nick-input:focus{border-color:var(--cyan);box-shadow:0 0 12px rgba(37,230,255,.25);}
+.online-status{font-size:13px;color:var(--muted);letter-spacing:.06em;min-height:1.4em;}
+.online-status.ok{color:#5dff8f;}
+.online-status.err{color:#ff7a8a;}
+.room-code-big{
+  font-family:var(--font-display);font-weight:900;font-size:clamp(28px,5vw,42px);
+  letter-spacing:.35em;color:var(--cyan);text-align:center;
+  text-shadow:0 0 24px rgba(37,230,255,.45);
+}
+.lb-list{display:flex;flex-direction:column;gap:7px;max-height:52vh;overflow-y:auto;width:100%;}
+.lb-row{
+  display:grid;grid-template-columns:42px 1fr auto auto;gap:10px;align-items:center;
+  border:1px solid rgba(132,148,184,.2);border-radius:8px;padding:8px 14px;background:rgba(12,18,36,.66);
+}
+.lb-row.top1{border-color:rgba(255,210,63,.55);}
+.lb-row.top2{border-color:rgba(37,230,255,.4);}
+.lb-row.top3{border-color:rgba(255,122,60,.4);}
+.lb-rank{font-family:var(--font-display);font-weight:900;font-size:18px;color:var(--muted);}
+.lb-row.top1 .lb-rank{color:var(--yellow);}
+.lb-name{font-weight:700;letter-spacing:.06em;}
+.lb-score{font-family:var(--font-display);color:var(--cyan);font-size:14px;}
+.lb-meta{font-size:11px;color:var(--muted);font-family:var(--font-display);}
+.nick-row{display:flex;gap:10px;align-items:center;width:100%;max-width:560px;}
+.nick-row label{font-size:13px;color:var(--muted);white-space:nowrap;}
+
 .controls-info{
   display:flex;gap:26px;flex-wrap:wrap;justify-content:center;margin-top:10px;
   color:var(--muted);font-size:13px;
@@ -292,6 +327,8 @@ body.touch .controls-info{display:none;}
   <div class="menu-tag">六名传奇车手集结霓虹赛道。<b>漂移蓄力、氮气冲刺、道具乱斗</b>，用三圈决出今夜的速度之王。</div>
   <div class="menu-btns">
     <button class="neo-btn" id="btn-start">开始竞速</button>
+    <button class="neo-btn magenta" id="btn-online">联机竞速</button>
+    <button class="ghost-btn" id="btn-leaderboard">积分排行榜</button>
     <button class="ghost-btn" id="btn-settings-menu">游戏设置</button>
   </div>
   <div class="controls-info">
@@ -388,6 +425,47 @@ body.touch .controls-info{display:none;}
   </div>
 </div>
 
+<!-- ===== 联机大厅 ===== -->
+<div id="online-lobby" class="screen hidden">
+  <div class="screen-title">联机<span>竞速</span></div>
+  <div class="nick-row">
+    <label>车手昵称</label>
+    <input class="nick-input" id="nick-input" maxlength="12" placeholder="输入昵称">
+  </div>
+  <div class="online-panel">
+    <div class="set-sec-title">创建房间</div>
+    <div class="menu-tag" style="text-align:left;margin:0">你当房主，生成房间号发给好友，满员后一起选车开跑。</div>
+    <button class="neo-btn" id="btn-host">创建房间</button>
+    <div class="room-code-big hidden" id="room-code-display">————</div>
+  </div>
+  <div class="online-panel">
+    <div class="set-sec-title">加入房间</div>
+    <div class="online-row">
+      <input id="room-join-input" maxlength="8" placeholder="输入房间号" spellcheck="false">
+      <button class="neo-btn magenta" id="btn-join">加入</button>
+    </div>
+  </div>
+  <div class="online-status" id="online-status">支持 2 人联机 · AI 补位成 5 车大战</div>
+  <div class="select-btns">
+    <button class="ghost-btn" id="btn-online-back">返回</button>
+    <button class="neo-btn hidden" id="btn-online-go">进入选车</button>
+  </div>
+</div>
+
+<!-- ===== 积分排行榜 ===== -->
+<div id="leaderboard" class="screen hidden" style="justify-content:flex-start;padding-top:34px;gap:14px;overflow-y:auto">
+  <div class="screen-title">积分<span>排行榜</span></div>
+  <div class="menu-tag">完赛按名次计分：冠军 <b>100</b> · 亚军 <b>70</b> · 季军 <b>50</b> · 其余递减，再加圈速奖励。</div>
+  <div class="lb-panel">
+    <div class="set-sec-title">本机总榜</div>
+    <div class="lb-list" id="lb-list"></div>
+  </div>
+  <div class="select-btns">
+    <button class="ghost-btn" id="btn-lb-clear">清空本机榜</button>
+    <button class="neo-btn" id="btn-lb-back">返回</button>
+  </div>
+</div>
+
 <!-- ===== 触屏控件 ===== -->
 <div id="touch-controls">
   <div class="tbtn" id="t-left">左</div>
@@ -399,6 +477,7 @@ body.touch .controls-info{display:none;}
   <div class="tbtn" id="t-item">道具</div>
 </div>
 
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 'use strict';
 /* ============================================================
@@ -407,6 +486,7 @@ body.touch .controls-info{display:none;}
    1. 工具与常量  2. 角色数据  3. 赛道系统  4. 输入系统
    5. 音频系统    6. 粒子/胎痕 7. 车辆物理    8. 车辆与头像绘制
    9. AI 系统     10. 道具系统 11. 游戏状态机  12. 主循环/HUD
+   13. 积分排行榜  14. 联机竞速
    ============================================================ */
 
 /* ========== 1. 工具与常量 ========== */
@@ -941,6 +1021,7 @@ class Kart{
     this.finished=false; this.finishTime=null; this.raceTime=0;
     this.aiLevel=aiLevel||.93; this.aiItemCd=2+rng()*3;
     this.bounce=0; this.frontFlip=0;
+    this.netRole=null; this.displayName=ch.name;
   }
   resetToGrid(slot){
     const g=gridSlot(slot);
@@ -1127,7 +1208,8 @@ function drawKart(g,k,t){
   // 影子
   g.fillStyle='rgba(0,0,0,.32)';
   g.beginPath(); g.ellipse(3,4,17,23,0,0,TAU); g.fill();
-  g.rotate(k.heading);
+  /* 车模鼻锥朝本地 -Y，物理 heading=0 朝 +X，需 +π/2 对齐车头与前进方向 */
+  g.rotate(k.heading + Math.PI/2);
   if(k.bounce>0) g.translate((Math.random()-.5)*2,(Math.random()-.5)*2);
   // 前轮视觉偏转
   const steerVis=clamp(k.lateral/Math.max(60,Math.abs(k.speed))*1.3,-.55,.55);
@@ -1540,7 +1622,7 @@ function updateMissiles(dt){
 }
 function drawMissiles(g){
   for(const m of missiles){
-    g.save();g.translate(m.x,m.y);g.rotate(m.heading);
+    g.save();g.translate(m.x,m.y);g.rotate(m.heading + Math.PI/2);
     g.fillStyle='#eef2fb';rrPath(g,-4,-10,8,16,4);g.fill();
     g.fillStyle='#ff4658';
     g.beginPath();g.moveTo(0,-16);g.lineTo(4,-9);g.lineTo(-4,-9);g.closePath();g.fill();
@@ -1578,18 +1660,22 @@ window.addEventListener('resize',resize);
 let STATE='menu', selectedIdx=0, raceClock=0, endTimer=0;
 const cam={cx:0,cy:0,zoom:1,rot:0};
 function shuffleArr(a){ for(let i=a.length-1;i>0;i--){const j=(rng()*(i+1))|0;[a[i],a[j]]=[a[j],a[i]]; } return a; }
-function playerKart(){ return karts.find(k=>k.isPlayer); }
+function playerKart(){
+  if(Net.mode==='guest') return karts.find(k=>k.netRole==='guest')||karts.find(k=>k.isPlayer);
+  return karts.find(k=>k.isPlayer);
+}
 
-const SCREEN_IDS=['menu','char-select','results','pause-menu','settings'];
+const SCREEN_IDS=['menu','char-select','results','pause-menu','settings','online-lobby','leaderboard'];
 function showScreens(active){
-  for(const id of SCREEN_IDS) $(id).classList.toggle('hidden',id!==active);
+  for(const id of SCREEN_IDS){ const el=$(id); if(el) el.classList.toggle('hidden',id!==active); }
 }
 function setState(s){
   STATE=s;
-  showScreens(s==='menu'?'menu': s==='select'?'char-select': s==='results'?'results':null);
+  const map={menu:'menu',select:'char-select',results:'results',online:'online-lobby',leaderboard:'leaderboard'};
+  showScreens(map[s]||null);
   $('hud').classList.toggle('hidden',!(s==='race'||s==='countdown'));
   document.body.classList.toggle('racing',s==='race'||s==='countdown');
-  if(s==='menu') initDemo();
+  if(s==='menu'){ initDemo(); Net.cleanupSoft(); }
 }
 /* ----- 暂停 ----- */
 function togglePause(){
@@ -1624,9 +1710,14 @@ function initDemo(){
 /* 开局 */
 function startRace(){
   endTimer=0; raceClock=0;
+  if(Net.mode==='host'||Net.mode==='guest'){
+    startOnlineRace();
+    return;
+  }
   const pch=CHARACTERS[selectedIdx];
   const others=shuffleArr(CHARACTERS.filter((_,i)=>i!==selectedIdx));
   karts=[new Kart(pch,true)];
+  karts[0].displayName=LB.getNick();
   for(let i=0;i<4;i++) karts.push(new Kart(others[i],false,.88+rng()*.09));
   shuffleArr(karts);
   karts.forEach((k,i)=>k.resetToGrid(i));
@@ -1634,6 +1725,53 @@ function startRace(){
   particles.length=0; skidmarks.length=0;
   setState('countdown');
   runCountdown();
+}
+function startOnlineRace(){
+  if(Net.mode==='guest'){
+    // 等待主机下发开局包
+    setOnlineStatus('等待房主开局…','ok');
+    return;
+  }
+  // host：本机选车后通知客人并开跑
+  const hostIdx=selectedIdx;
+  const guestIdx=(Net.guestCharIdx!=null)?Net.guestCharIdx:((hostIdx+1)%CHARACTERS.length);
+  const used=new Set([hostIdx,guestIdx]);
+  const aiPool=CHARACTERS.map((c,i)=>i).filter(i=>!used.has(i));
+  shuffleArr(aiPool);
+  const lineup=[
+    {charIdx:hostIdx, role:'host', name:LB.getNick()},
+    {charIdx:guestIdx, role:'guest', name:Net.guestName||'车手B'},
+    {charIdx:aiPool[0], role:'ai'},
+    {charIdx:aiPool[1], role:'ai'},
+    {charIdx:aiPool[2], role:'ai'}
+  ];
+  shuffleArr(lineup);
+  Net.send({type:'race_start', lineup, hostChar:hostIdx, guestChar:guestIdx});
+  buildOnlineKarts(lineup, true);
+  initItemBoxes();
+  particles.length=0; skidmarks.length=0;
+  setState('countdown');
+  runCountdown();
+}
+function buildOnlineKarts(lineup, asHost){
+  karts=lineup.map(slot=>{
+    const ch=CHARACTERS[slot.charIdx];
+    const isLocal=asHost?(slot.role==='host'):(slot.role==='guest');
+    const k=new Kart(ch, isLocal, slot.role==='ai'?(.88+rng()*.09):1);
+    k.netRole=slot.role;
+    k.displayName=slot.name||ch.name;
+    if(slot.role==='guest'&&asHost) k.isPlayer=false; // host 机上客机车辆非本地玩家
+    if(slot.role==='host'&&!asHost) k.isPlayer=false;
+    if(isLocal) k.isPlayer=true;
+    return k;
+  });
+  // 保证恰好一辆 isPlayer 给本机镜头
+  let saw=false;
+  for(const k of karts){
+    if(k.isPlayer&&!saw){saw=true;continue;}
+    if(k.isPlayer) k.isPlayer=false;
+  }
+  karts.forEach((k,i)=>k.resetToGrid(i));
 }
 function runCountdown(){
   const el=$('countdown');
@@ -1654,13 +1792,24 @@ function runCountdown(){
 /* 比赛更新 */
 function updateRace(dt){
   raceClock+=dt;
-  for(const k of karts){
-    const c=(k.isPlayer&&!k.finished)?INPUT:aiControls(k,dt);
-    k.update(dt,c);
+  if(Net.mode==='guest'){
+    // 客机：用主机状态插值，本机只发输入
+    Net.sendInput();
+    Net.applyRemoteSmooth(dt);
+  }else{
+    for(const k of karts){
+      let c;
+      if(k.finished) c={up:false,down:false,left:false,right:false,drift:false,nitro:false};
+      else if(k.netRole==='guest'&&Net.mode==='host') c=Net.guestInput||aiControls(k,dt);
+      else if(k.isPlayer) c=INPUT;
+      else c=aiControls(k,dt);
+      k.update(dt,c);
+    }
+    for(let i=0;i<karts.length;i++)for(let j=i+1;j<karts.length;j++)resolveKartCollision(karts[i],karts[j]);
+    updateItemBoxes(dt);
+    updateMissiles(dt);
+    if(Net.mode==='host') Net.broadcastState();
   }
-  for(let i=0;i<karts.length;i++)for(let j=i+1;j<karts.length;j++)resolveKartCollision(karts[i],karts[j]);
-  updateItemBoxes(dt);
-  updateMissiles(dt);
   updateParticles(dt);
   const p=playerKart();
   if(p&&p.finished){
@@ -1668,32 +1817,43 @@ function updateRace(dt){
     if(karts.every(k=>k.finished)||endTimer>6) endRace();
   }
 }
+function placePoints(pos){
+  return ({1:100,2:70,3:50,4:30,5:15})[pos]||10;
+}
 function endRace(){
+  if(Net._ending) return; Net._ending=true;
   const p=playerKart();
   for(const k of karts) if(!k.finished){ k.finished=true; k.finishTime=900+(TRACK_TOTAL*TOTAL_LAPS-k.progress)/300; }
   const sorted=[...karts].sort((a,b)=>a.finishTime-b.finishTime);
   const pos=sorted.indexOf(p)+1;
+  const base=placePoints(pos);
+  const timeBonus=p.finishTime<900?Math.max(0,Math.round((90-p.finishTime)*1.2)):0;
+  const gained=base+timeBonus;
+  LB.addScore(LB.getNick(), gained, pos, p.finishTime);
+
   const banner=$('result-banner');
   banner.className='';
   if(pos===1){banner.textContent='冠 军';banner.classList.add('win');}
   else if(pos<=3){banner.textContent='第 '+pos+' 名 · 领奖台';banner.classList.add('runner');}
   else banner.textContent='第 '+pos+' 名';
-  $('result-stats').innerHTML='总用时 <b>'+fmtTime(p.finishTime)+'</b>　·　最佳单圈 <b>'+fmtTime(p.bestLap)+'</b>';
+  $('result-stats').innerHTML='总用时 <b>'+fmtTime(p.finishTime)+'</b>　·　最佳单圈 <b>'+fmtTime(p.bestLap)+'</b>　·　本局积分 <b style="color:var(--cyan)">+'+gained+'</b>';
   const list=$('result-list'); list.innerHTML='';
   sorted.forEach((k,i)=>{
     const row=document.createElement('div');
-    row.className='result-row'+(k.isPlayer?' me':'');
+    row.className='result-row'+(k===p?' me':'');
     const cv=document.createElement('canvas'); cv.width=110; cv.height=110;
     drawPortrait(cv.getContext('2d'),k.char,55,55,.34,0);
     const rr1=document.createElement('div'); rr1.className='rr-pos'; rr1.textContent=i+1;
     const nm=document.createElement('div'); nm.className='rr-name';
-    nm.textContent=k.char.name+' · '+k.char.title;
+    const tag=k.displayName?(' · '+k.displayName):'';
+    nm.textContent=k.char.name+tag+(k.netRole==='host'||k.netRole==='guest'?' 🔗':'');
     const tm=document.createElement('div'); tm.className='rr-time';
     tm.textContent= k.finishTime>=900?'未完赛':fmtTime(k.finishTime);
     row.append(rr1,cv,nm,tm); list.appendChild(row);
   });
   MUSIC.stop();
   setState('results');
+  setTimeout(()=>{Net._ending=false;},500);
 }
 /* 菜单演示更新 */
 function updateDemo(dt){
@@ -1706,7 +1866,7 @@ function updateDemo(dt){
 function updateCam(dt){
   const f=1-Math.pow(.0015,dt);
   let tx,ty,tz,trot=null;
-  if(STATE==='settings') return;
+  if(STATE==='settings'||STATE==='online'||STATE==='leaderboard') return;
   if(STATE==='menu'||STATE==='select'){
     const b=TRACK_BOX;
     tx=b.cx; ty=b.cy;
@@ -1758,7 +1918,8 @@ function render(t){
   const useRot=SETTINGS.view==='rotate'&&STATE!=='menu'&&STATE!=='select'&&STATE!=='settings';
   if(useRot){
     ctx.fillStyle='#0a1214'; ctx.fillRect(0,0,vw,vh);
-    const th=-Math.PI/2-cam.rot;
+    /* 车头已与 heading 对齐，相机只需 -heading 使前进方向朝屏幕上方 */
+    const th=-cam.rot;
     const co=Math.cos(th), si=Math.sin(th);
     const a=z*co, b=z*si, c=-z*si, d=z*co;
     const carX=vw/2, carY=vh*(vw<vh?.72:.66);
@@ -1942,11 +2103,241 @@ function bindSettingsControls(){
   });
 }
 
+/* ========== 13. 积分排行榜 ========== */
+const LB={
+  KEY:'neonkart_lb_v1', NICK_KEY:'neonkart_nick',
+  getNick(){
+    try{ return localStorage.getItem(this.NICK_KEY)||'霓虹车手'; }catch(e){ return '霓虹车手'; }
+  },
+  setNick(n){
+    n=(n||'').trim().slice(0,12)||'霓虹车手';
+    try{ localStorage.setItem(this.NICK_KEY,n); }catch(e){}
+    return n;
+  },
+  load(){
+    try{ return JSON.parse(localStorage.getItem(this.KEY)||'[]'); }catch(e){ return []; }
+  },
+  save(list){
+    try{ localStorage.setItem(this.KEY, JSON.stringify(list.slice(0,30))); }catch(e){}
+  },
+  addScore(name, points, place, time){
+    const list=this.load();
+    let row=list.find(r=>r.name===name);
+    if(!row){ row={name,score:0,races:0,wins:0,bestPlace:99,bestTime:null}; list.push(row); }
+    row.score+=points; row.races+=1;
+    if(place===1) row.wins+=1;
+    row.bestPlace=Math.min(row.bestPlace||99, place);
+    if(time!=null && time<900 && (row.bestTime==null || time<row.bestTime)) row.bestTime=time;
+    list.sort((a,b)=>b.score-a.score);
+    this.save(list);
+    return row;
+  },
+  clear(){ this.save([]); },
+  render(){
+    const list=this.load();
+    const box=$('lb-list'); if(!box) return;
+    box.innerHTML='';
+    if(!list.length){
+      box.innerHTML='<div class="menu-tag">暂无记录 · 完成一场比赛即可上榜</div>';
+      return;
+    }
+    list.forEach((r,i)=>{
+      const row=document.createElement('div');
+      row.className='lb-row'+(i===0?' top1':i===1?' top2':i===2?' top3':'');
+      row.innerHTML='<div class="lb-rank">'+(i+1)+'</div>'
+        +'<div class="lb-name">'+r.name+'</div>'
+        +'<div class="lb-score">'+r.score+' 分</div>'
+        +'<div class="lb-meta">'+r.wins+'胜/'+r.races+'场'
+        +(r.bestTime!=null?' · '+fmtTime(r.bestTime):'')+'</div>';
+      box.appendChild(row);
+    });
+  }
+};
+function setOnlineStatus(msg, kind){
+  const el=$('online-status'); if(!el) return;
+  el.textContent=msg; el.className='online-status'+(kind?' '+kind:'');
+}
+
+/* ========== 14. 联机竞速 (PeerJS) ========== */
+const Net={
+  mode:null, // null | host | guest
+  peer:null, conn:null,
+  roomCode:null, guestName:null, guestCharIdx:null,
+  guestInput:null, lastState:null, _ending:false, _inputAcc:0, _stateAcc:0,
+  cleanupSoft(){
+    // 回菜单时保留连接可选；彻底清理见 destroy
+  },
+  destroy(){
+    try{ if(this.conn) this.conn.close(); }catch(e){}
+    try{ if(this.peer) this.peer.destroy(); }catch(e){}
+    this.mode=null; this.peer=null; this.conn=null; this.roomCode=null;
+    this.guestName=null; this.guestCharIdx=null; this.guestInput=null; this.lastState=null;
+    this._ending=false;
+    const disp=$('room-code-display'); if(disp){ disp.classList.add('hidden'); disp.textContent='————'; }
+    const go=$('btn-online-go'); if(go) go.classList.add('hidden');
+  },
+  ensurePeerJs(){
+    return typeof Peer!=='undefined';
+  },
+  makeCode(){
+    const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s='NK';
+    for(let i=0;i<4;i++) s+=chars[(Math.random()*chars.length)|0];
+    return s;
+  },
+  send(obj){
+    if(this.conn&&this.conn.open) try{ this.conn.send(obj); }catch(e){}
+  },
+  sendInput(){
+    this._inputAcc+=1;
+    if(this._inputAcc<2) return; this._inputAcc=0;
+    this.send({type:'input', input:{
+      up:!!INPUT.up, down:!!INPUT.down, left:!!INPUT.left, right:!!INPUT.right,
+      drift:!!INPUT.drift, nitro:!!INPUT.nitro, item:!!INPUT.item
+    }});
+    if(INPUT.item) INPUT.item=false;
+  },
+  broadcastState(){
+    this._stateAcc+=1;
+    if(this._stateAcc<2) return; this._stateAcc=0;
+    this.send({
+      type:'state', clock:raceClock,
+      karts:karts.map(k=>({
+        x:k.x,y:k.y,heading:k.heading,vx:k.vx,vy:k.vy,speed:k.speed,
+        nitro:k.nitro,nitroActive:k.nitroActive,item:k.item,shield:k.shield,
+        lap:k.lap,progress:k.progress,finished:k.finished,finishTime:k.finishTime,
+        bestLap:k.bestLap,spinout:k.spinout,charId:k.char.id,netRole:k.netRole,
+        displayName:k.displayName,isPlayer:k.isPlayer
+      }))
+    });
+  },
+  applyRemoteSmooth(dt){
+    const st=this.lastState; if(!st||!st.karts||!karts.length) return;
+    raceClock=st.clock;
+    for(let i=0;i<karts.length;i++){
+      const k=karts[i], s=st.karts[i]; if(!s) continue;
+      const a=1-Math.pow(.0008,dt);
+      k.x=lerp(k.x,s.x,a); k.y=lerp(k.y,s.y,a);
+      k.heading+=angDiff(k.heading,s.heading)*a;
+      k.vx=s.vx; k.vy=s.vy; k.speed=s.speed;
+      k.nitro=s.nitro; k.nitroActive=s.nitroActive; k.item=s.item; k.shield=s.shield;
+      k.lap=s.lap; k.finished=s.finished; k.finishTime=s.finishTime; k.bestLap=s.bestLap;
+      k.spinout=s.spinout;
+    }
+  },
+  onData(msg){
+    if(!msg||!msg.type) return;
+    if(msg.type==='hello'&&this.mode==='host'){
+      this.guestName=msg.name||'车手B';
+      this.guestCharIdx=msg.charIdx|0;
+      setOnlineStatus('玩家「'+this.guestName+'」已加入 · 双方选车后由房主点火','ok');
+      $('btn-online-go').classList.remove('hidden');
+      this.send({type:'welcome', hostName:LB.getNick()});
+    }else if(msg.type==='welcome'&&this.mode==='guest'){
+      setOnlineStatus('已连接房主「'+(msg.hostName||'')+'」· 请选车，等待房主开局','ok');
+      $('btn-online-go').classList.remove('hidden');
+    }else if(msg.type==='char'&&this.mode==='host'){
+      this.guestCharIdx=msg.charIdx|0;
+      this.guestName=msg.name||this.guestName;
+    }else if(msg.type==='race_start'&&this.mode==='guest'){
+      buildOnlineKarts(msg.lineup, false);
+      initItemBoxes(); particles.length=0; skidmarks.length=0;
+      endTimer=0; raceClock=0;
+      setState('countdown'); runCountdown();
+    }else if(msg.type==='input'&&this.mode==='host'){
+      this.guestInput=msg.input||null;
+      if(msg.input&&msg.input.item){
+        const gk=karts.find(k=>k.netRole==='guest');
+        if(gk&&STATE==='race') useItem(gk);
+      }
+    }else if(msg.type==='state'&&this.mode==='guest'){
+      this.lastState=msg;
+      if(!karts.length&&msg.karts){ /* ignore */ }
+    }
+  },
+  bindConn(conn){
+    this.conn=conn;
+    conn.on('open',()=>{
+      if(this.mode==='guest'){
+        this.send({type:'hello', name:LB.getNick(), charIdx:selectedIdx});
+        setOnlineStatus('正在握手…','ok');
+      }else{
+        setOnlineStatus('对手连入中…','ok');
+      }
+    });
+    conn.on('data', d=>this.onData(d));
+    conn.on('close',()=>{
+      setOnlineStatus('连接已断开','err');
+      if(STATE==='race'||STATE==='countdown'){ /* keep playing vs AI */ this.mode=this.mode==='host'?'host':null; }
+    });
+    conn.on('error', err=>setOnlineStatus('连接错误：'+(err&&err.type||'unknown'),'err'));
+  },
+  host(){
+    if(!this.ensurePeerJs()){ setOnlineStatus('联机组件加载失败，请检查网络后重试','err'); return; }
+    this.destroy();
+    LB.setNick($('nick-input').value);
+    this.mode='host';
+    this.roomCode=this.makeCode();
+    setOnlineStatus('正在创建房间…');
+    this.peer=new Peer(this.roomCode,{debug:1});
+    this.peer.on('open', id=>{
+      this.roomCode=id;
+      const disp=$('room-code-display');
+      disp.textContent=id; disp.classList.remove('hidden');
+      setOnlineStatus('房间已创建 · 把房间号发给好友','ok');
+    });
+    this.peer.on('connection', c=>this.bindConn(c));
+    this.peer.on('error', err=>{
+      setOnlineStatus('建房失败：'+(err&&err.type||'请换个房间号重试'),'err');
+      this.mode=null;
+    });
+  },
+  join(){
+    if(!this.ensurePeerJs()){ setOnlineStatus('联机组件加载失败，请检查网络后重试','err'); return; }
+    LB.setNick($('nick-input').value);
+    const code=($('room-join-input').value||'').trim().toUpperCase();
+    if(code.length<4){ setOnlineStatus('请输入有效房间号','err'); return; }
+    this.destroy();
+    this.mode='guest';
+    setOnlineStatus('正在加入 '+code+' …');
+    this.peer=new Peer({debug:1});
+    this.peer.on('open',()=>{
+      const c=this.peer.connect(code,{reliable:true});
+      this.bindConn(c);
+    });
+    this.peer.on('error', err=>{
+      setOnlineStatus('加入失败：'+(err&&err.type||'检查房间号与网络'),'err');
+      this.mode=null;
+    });
+  },
+  openLobby(){
+    $('nick-input').value=LB.getNick();
+    setOnlineStatus('支持 2 人联机 · AI 补位成 5 车大战');
+    setState('online');
+  },
+  notifyChar(){
+    if(this.mode==='guest'&&this.conn) this.send({type:'char', charIdx:selectedIdx, name:LB.getNick()});
+  }
+};
+
 /* ========== 按钮绑定与主循环 ========== */
-$('btn-start').addEventListener('click',()=>{AudioSys.ensure();setState('select');});
-$('btn-back').addEventListener('click',()=>setState('menu'));
-$('btn-race').addEventListener('click',()=>{AudioSys.ensure();startRace();});
-$('btn-retry').addEventListener('click',()=>{AudioSys.ensure();startRace();});
+$('btn-start').addEventListener('click',()=>{AudioSys.ensure(); Net.mode=null; setState('select');});
+$('btn-online').addEventListener('click',()=>{AudioSys.ensure(); Net.openLobby();});
+$('btn-leaderboard').addEventListener('click',()=>{ LB.render(); setState('leaderboard'); });
+$('btn-lb-back').addEventListener('click',()=>setState('menu'));
+$('btn-lb-clear').addEventListener('click',()=>{ if(confirm('确定清空本机排行榜？')){ LB.clear(); LB.render(); }});
+$('btn-online-back').addEventListener('click',()=>{ Net.destroy(); setState('menu'); });
+$('btn-host').addEventListener('click',()=>Net.host());
+$('btn-join').addEventListener('click',()=>Net.join());
+$('btn-online-go').addEventListener('click',()=>{
+  LB.setNick($('nick-input').value);
+  Net.notifyChar();
+  setState('select');
+});
+$('nick-input').addEventListener('change',()=>LB.setNick($('nick-input').value));
+$('btn-back').addEventListener('click',()=>setState(Net.mode?'online':'menu'));
+$('btn-race').addEventListener('click',()=>{AudioSys.ensure(); Net.notifyChar(); startRace();});
+$('btn-retry').addEventListener('click',()=>{AudioSys.ensure(); if(Net.mode==='guest'){ setOnlineStatus('请等待房主再开一局','ok'); setState('online'); return;} startRace();});
 $('btn-change-char').addEventListener('click',()=>setState('select'));
 $('mute-btn').addEventListener('click',()=>{AudioSys.ensure();toggleMute();});
 $('btn-settings-menu').addEventListener('click',()=>openSettings('menu'));
@@ -1955,9 +2346,14 @@ $('btn-settings-done').addEventListener('click',closeSettings);
 $('btn-resume').addEventListener('click',resumeGame);
 $('btn-pause-settings').addEventListener('click',()=>openSettings('pause'));
 $('btn-pause-restart').addEventListener('click',()=>{AudioSys.ensure();startRace();});
-$('btn-pause-quit').addEventListener('click',()=>{MUSIC.stop();setState('menu');});
+$('btn-pause-quit').addEventListener('click',()=>{MUSIC.stop(); Net.destroy(); setState('menu');});
 bindSettingsControls();
-onUseItem=()=>{const p=playerKart();if(p&&STATE==='race')useItem(p);};
+onUseItem=()=>{
+  const p=playerKart();
+  if(!p||STATE!=='race') return;
+  if(Net.mode==='guest'){ INPUT.item=true; return; }
+  useItem(p);
+};
 
 let lastT=performance.now();
 function frame(now){
