@@ -4,14 +4,16 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-cyan.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/aiyangdie/neon-kart?color=ff3d8b)](https://github.com/aiyangdie/neon-kart/releases)
+[![Play Online](https://img.shields.io/badge/Play-Online-25e6ff)](https://aiyangdie.github.io/neon-kart/)
 
 ## 立即游玩 / 下载
 
 | 版本 | 获取方式 |
 |------|----------|
-| **网页版** | 打开仓库内 [`web/index.html`](web/index.html)，或到 [Releases](https://github.com/aiyangdie/neon-kart/releases) 下载 `NEON-KART-web-*.zip` |
-| **Windows 安装版** | [Releases](https://github.com/aiyangdie/neon-kart/releases) → `霓虹卡丁车-*-Setup.exe` |
-| **Windows 便携版** | [Releases](https://github.com/aiyangdie/neon-kart/releases) → `霓虹卡丁车-*-Portable.exe` |
+| **在线网页版（GitHub Pages）** | **[点击即玩 →](https://aiyangdie.github.io/neon-kart/)** |
+| **网页版源码** | 仓库内 [`web/index.html`](web/index.html) / [`docs/index.html`](docs/index.html)，或 [Releases](https://github.com/aiyangdie/neon-kart/releases) 下载 `NEON-KART-web-*.zip` |
+| **Windows 安装版** | [Releases](https://github.com/aiyangdie/neon-kart/releases) → `NEON-KART-*-Setup.exe` |
+| **Windows 便携版** | [Releases](https://github.com/aiyangdie/neon-kart/releases) → `NEON-KART-*-Portable.exe` |
 
 > 未做代码签名时，Windows 可能提示 SmartScreen：选「更多信息」→「仍要运行」。
 
@@ -32,19 +34,19 @@
 ## 仓库结构
 
 ```
-web/                 网页版（单文件 HTML，浏览器打开即可）
+docs/                GitHub Pages 在线版（与网页同源）
+web/                 网页版源码
 desktop/             Electron 桌面版源码
   electron/          主进程
   game/              游戏页面与本地字体
   build/             图标
-.github/             Issue / PR 模板等
 ```
 
 ## 本地开发
 
 ### 网页版
 
-用浏览器直接打开 `web/index.html` 即可。
+用浏览器直接打开 `web/index.html` 或 `docs/index.html` 即可。
 
 ### 桌面版
 
