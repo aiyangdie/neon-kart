@@ -93,13 +93,21 @@ canvas#game{position:fixed;inset:0;display:block;}
 }
 .lobby-slot.human{border-color:rgba(37,230,255,.55);box-shadow:0 0 14px rgba(37,230,255,.18);}
 .lobby-slot.me{border-color:var(--yellow);box-shadow:0 0 14px rgba(255,210,63,.22);}
-.lobby-slot.ai{opacity:.75;}
+.lobby-slot.ai{opacity:.9;border-color:rgba(132,148,184,.4);}
+.lobby-slot.ai.on{border-color:rgba(93,255,143,.45);box-shadow:0 0 12px rgba(93,255,143,.12);}
+.lobby-slot.empty-seat{opacity:.55;border-style:dashed;}
+.lobby-slot.ai-toggle{cursor:pointer;transition:border-color .15s,box-shadow .15s,opacity .15s;}
+.lobby-slot.ai-toggle:hover{opacity:1;border-color:var(--cyan);}
+.ls-tag.ai{color:#5dff8f;border-color:rgba(93,255,143,.45);}
+.ls-tag.empty{color:var(--muted);}
+.ai-tools{display:none;gap:8px;flex-wrap:wrap;width:100%;max-width:920px;justify-content:center;}
+.ai-tools.on{display:flex;}
+.ai-tools .ghost-btn,.ai-tools .neo-btn{padding:8px 14px;font-size:12px;}
 .ls-top{display:flex;justify-content:space-between;align-items:center;gap:6px;}
 .ls-seat{font-family:var(--font-display);font-size:10px;letter-spacing:.2em;color:var(--muted);}
 .ls-tag{font-size:10px;letter-spacing:.08em;padding:2px 6px;border-radius:3px;border:1px solid rgba(132,148,184,.35);color:var(--muted);}
 .ls-tag.human{color:var(--cyan);border-color:rgba(37,230,255,.45);}
 .ls-tag.host{color:var(--yellow);border-color:rgba(255,210,63,.45);}
-.ls-tag.ai{color:var(--muted);}
 .ls-name{font-weight:700;font-size:14px;letter-spacing:.06em;}
 .ls-char{font-size:12px;color:var(--muted);}
 .ls-char b{font-weight:700;}
@@ -495,7 +503,7 @@ body.touch .controls-info{display:none;}
 <!-- ===== 联机大厅 ===== -->
 <div id="online-lobby" class="screen hidden" style="justify-content:flex-start;padding-top:28px;gap:14px;overflow-y:auto">
   <div class="screen-title">联机<span>匹配</span></div>
-  <div class="menu-tag">最多 <b>6</b> 真人 · 空位人机 · 选车互相可见 · 全员就绪后开赛更稳</div>
+  <div class="menu-tag">最多 <b>6</b> 真人 · 空位可开/关人机 · 选车互相可见 · 全员就绪后开赛更稳</div>
   <div class="nick-row">
     <label>车手昵称</label>
     <input class="nick-input" id="nick-input" maxlength="12" placeholder="输入昵称">
@@ -517,9 +525,13 @@ body.touch .controls-info{display:none;}
   <div class="match-summary" id="match-summary">
     <div class="ms-card"><span>真人</span><b id="ms-humans">0</b></div>
     <div class="ms-card"><span>已就绪</span><b id="ms-ready">0</b></div>
-    <div class="ms-card"><span>人机补位</span><b id="ms-ai">6</b></div>
+    <div class="ms-card"><span>人机参赛</span><b id="ms-ai">6</b></div>
   </div>
-  <div class="set-sec-title" id="roster-title" style="display:none"><span class="conn-dot" id="conn-dot"></span>匹配席位</div>
+  <div class="ai-tools" id="ai-tools">
+    <button type="button" class="ghost-btn" id="btn-ai-all">空位全开人机</button>
+    <button type="button" class="ghost-btn" id="btn-ai-none">空位全关（不补）</button>
+  </div>
+  <div class="set-sec-title" id="roster-title" style="display:none"><span class="conn-dot" id="conn-dot"></span>匹配席位 · 点空位可切换人机</div>
   <div class="lobby-roster hidden" id="lobby-roster"></div>
   <div class="online-status" id="online-status">创建或加入房间，开始匹配</div>
   <div class="select-btns">
@@ -1583,34 +1595,56 @@ function drawPortrait(g,ch,cx,cy,s,t){
 }
 
 /* ========== 9. AI 系统 ========== */
+function isAiKart(k){
+  if(!k) return false;
+  if(k.netRole==='ai') return true;
+  if(typeof k.netPid==='string' && k.netPid.indexOf('ai-')===0) return true;
+  return !k.isPlayer && !(k.netRole==='host'||k.netRole==='guest');
+}
 function aiControls(k,dt){
+  if(k.aiNitroT==null) k.aiNitroT=0;
   const cur=PATH[k.nearIdx].cum;
-  const lookD=95+Math.abs(k.speed)*.32;
+  // 速度越高看得越远，弯道提前减速
+  const lookD=110+Math.abs(k.speed)*.42;
   const tgt=pointAtDist(cur+lookD);
   const desired=Math.atan2(tgt.y-k.y,tgt.x-k.x);
   const ad=angDiff(k.heading,desired);
-  // 前方曲率
-  const pA=pointAtDist(cur+70), pB=pointAtDist(cur+240);
+  const pA=pointAtDist(cur+80), pB=pointAtDist(cur+260);
   const curve=Math.abs(angDiff(Math.atan2(pA.y-k.y,pA.x-k.x),Math.atan2(pB.y-pA.y,pB.x-pA.x)));
-  let targetSpeed=k.phys.maxSpeed*k.aiLevel;
-  if(curve>.5) targetSpeed*=clamp(1.05-curve*.55,.55,.95);
-  let steer=clamp(ad*2.5,-1,1)+(rng()-.5)*.05;
+  // 轻度追赶 / 领先后退，避免人机趴窝或碾压
+  let rubber=1;
+  let bestHuman=null, bestProg=-1e9;
+  for(const o of karts){
+    if(isAiKart(o)||o.finished) continue;
+    if(o.progress>bestProg){ bestProg=o.progress; bestHuman=o; }
+  }
+  if(bestHuman){
+    const gap=bestHuman.progress-k.progress;
+    if(gap>550) rubber=1.12;
+    else if(gap>280) rubber=1.06;
+    else if(gap<-650) rubber=.88;
+    else if(gap<-350) rubber=.94;
+  }
+  let targetSpeed=k.phys.maxSpeed*k.aiLevel*rubber;
+  if(curve>.45) targetSpeed*=clamp(1.08-curve*.6,.5,.95);
+  if(Math.abs(ad)>.7) targetSpeed*=.78;
+  let steer=clamp(ad*2.8,-1,1)+(rng()-.5)*.04;
   const c={up:false,down:false,left:false,right:false,drift:false,nitro:false};
-  if(steer<-.12)c.left=true;
-  if(steer>.12)c.right=true;
+  if(steer<-.1)c.left=true;
+  if(steer>.1)c.right=true;
   if(k.speed<targetSpeed)c.up=true;
-  if(k.speed>targetSpeed+45)c.down=true;
-  if(Math.abs(ad)>.45&&Math.abs(k.speed)>k.phys.maxSpeed*.6)c.drift=true;
-  // 氮气
+  if(k.speed>targetSpeed+40||(Math.abs(ad)>.95&&k.speed>80))c.down=true;
+  if(Math.abs(ad)>.38&&Math.abs(k.speed)>k.phys.maxSpeed*.55)c.drift=true;
+  // 出弯/直道喷氮气
   if(k.aiNitroT>0){k.aiNitroT-=dt;c.nitro=true;}
-  else if(curve<.2&&k.nitro>30&&rng()<.012)k.aiNitroT=1.3;
-  // 道具
+  else if(curve<.22&&Math.abs(ad)<.35&&k.nitro>28&&rng()<.018)k.aiNitroT=1.1+rng()*.6;
+  else if(rubber>1.05&&k.nitro>40&&rng()<.025)k.aiNitroT=1.4;
   k.aiItemCd-=dt;
   if(k.item&&k.aiItemCd<=0){
     if(k.item==='nitro'){k.item=null;k.nitro=clamp(k.nitro+60,0,100);}
     else if(k.item==='shield'){k.item=null;k.shield=5;}
     else if(nearestEnemyAhead(k)){k.item=null;fireMissile(k);}
-    k.aiItemCd=1.5+rng()*3;
+    k.aiItemCd=1.2+rng()*2.8;
   }
   return c;
 }
@@ -1841,11 +1875,12 @@ function buildOnlineKarts(lineup){
   karts=lineup.map(slot=>{
     const ch=CHARACTERS[slot.charIdx];
     const isLocal=slot.pid===Net.myId;
-    const k=new Kart(ch, isLocal, slot.role==='ai'?(.88+rng()*.09):1);
+    const k=new Kart(ch, isLocal, slot.role==='ai'?(.9+rng()*.08):1);
     k.netRole=slot.role;
     k.netPid=slot.pid||null;
     k.displayName=slot.name||ch.name;
     k.isPlayer=!!isLocal;
+    if(slot.role==='ai'){ k.aiNitroT=0; k.aiItemCd=1+rng()*2; }
     return k;
   });
   let saw=false;
@@ -1878,12 +1913,14 @@ function updateRace(dt){
     Net.sendInput();
     Net.applyRemoteSmooth(dt);
   }else{
+    const idle={up:false,down:false,left:false,right:false,drift:false,nitro:false};
     for(const k of karts){
       let c;
-      if(k.finished) c={up:false,down:false,left:false,right:false,drift:false,nitro:false};
-      else if(k.netPid&&k.netPid!==Net.myId&&Net.mode==='host'){
-        c=Net.inputs[k.netPid]||{up:false,down:false,left:false,right:false,drift:false,nitro:false};
-      }else if(k.isPlayer) c=INPUT;
+      if(k.finished) c=idle;
+      else if(isAiKart(k)) c=aiControls(k,dt);
+      else if(k.netPid&&k.netPid!==Net.myId&&Net.mode==='host')
+        c=Net.inputs[k.netPid]||idle;
+      else if(k.isPlayer) c=INPUT;
       else c=aiControls(k,dt);
       k.update(dt,c);
     }
@@ -2253,6 +2290,7 @@ const Net={
   inputs:{},
   lastState:null, _ending:false, _inputAcc:0, _stateAcc:0,
   _joinTries:0, _joinCode:'', _hostReady:false, _roomToken:null, roomCode:null, matchLocking:false, _hbTimer:null, _lastPong:0,
+  aiPads:[true,true,true,true,true,true],
   BROKERS:[{ host:'0.peerjs.com', port:443, path:'/', secure:true, tag:'0' }],
   iceConfig:{ iceServers:[
     { urls:'stun:stun.l.google.com:19302' },
@@ -2270,6 +2308,7 @@ const Net={
     this.mode=null; this.peer=null; this.conn=null; this.conns={};
     this.myId=null; this.players=[]; this.inputs={}; this.lastState=null;
     this.roomCode=null; this._roomToken=null; this._ending=false; this._joinTries=0; this._joinCode='';
+    this.aiPads=[true,true,true,true,true,true];
     document.body.classList.remove('online-party');
     const disp=$('room-code-display'); if(disp){ disp.classList.add('hidden'); disp.textContent='————'; }
     const hint=$('room-code-hint'); if(hint){ hint.classList.add('hidden'); hint.textContent=''; }
@@ -2280,9 +2319,37 @@ const Net={
     const rt=$('roster-title'); if(rt) rt.style.display='none';
     const ro=$('lobby-roster'); if(ro){ ro.classList.add('hidden'); ro.innerHTML=''; }
     const ms=$('match-summary'); if(ms) ms.classList.remove('on');
+    const tools=$('ai-tools'); if(tools) tools.classList.remove('on');
     const panel=$('online-connect-panel'); if(panel){ panel.style.display=''; panel.classList.remove('in-room'); }
     this.setConnDot(false);
     this.renderPartyBar();
+  },
+  ensureAiPads(){
+    if(!Array.isArray(this.aiPads)) this.aiPads=[];
+    while(this.aiPads.length<KART_COUNT) this.aiPads.push(true);
+    this.aiPads=this.aiPads.slice(0,KART_COUNT).map(v=>!!v);
+  },
+  countAiPads(){
+    this.ensureAiPads();
+    let n=0;
+    for(let i=this.players.length;i<KART_COUNT;i++) if(this.aiPads[i]) n++;
+    return n;
+  },
+  toggleAiSeat(seatIdx){
+    if(this.mode!=='host'||this.matchLocking) return;
+    this.ensureAiPads();
+    seatIdx=seatIdx|0;
+    if(seatIdx<this.players.length||seatIdx>=KART_COUNT) return;
+    this.aiPads[seatIdx]=!this.aiPads[seatIdx];
+    setOnlineStatus(this.aiPads[seatIdx]?'座位 '+(seatIdx+1)+'：人机参赛':'座位 '+(seatIdx+1)+'：空位不开赛','ok');
+    this.syncLobby();
+  },
+  setAllAiPads(on){
+    if(this.mode!=='host'||this.matchLocking) return;
+    this.ensureAiPads();
+    for(let i=this.players.length;i<KART_COUNT;i++) this.aiPads[i]=!!on;
+    setOnlineStatus(on?'空位全部开启人机':'空位全部关闭（不开赛）','ok');
+    this.syncLobby();
   },
   setRoomUI(on){
     const panel=$('online-connect-panel');
@@ -2315,13 +2382,16 @@ const Net={
     const box=$('match-summary'); if(!box) return;
     if(!this.mode||!this.players.length){ box.classList.remove('on'); return; }
     box.classList.add('on');
+    this.ensureAiPads();
     const h=this.players.length;
     const r=this.players.filter(p=>p.ready).length;
-    const ai=Math.max(0, KART_COUNT-h);
+    const ai=this.countAiPads();
     const eh=$('ms-humans'), er=$('ms-ready'), ea=$('ms-ai');
     if(eh) eh.textContent=h+'/'+MAX_HUMANS;
     if(er) er.textContent=r+'/'+h;
     if(ea) ea.textContent=String(ai);
+    const tools=$('ai-tools');
+    if(tools) tools.classList.toggle('on', this.mode==='host'&&this._hostReady);
   },
   beginMatch(){
     if(this.mode!=='host'||this.matchLocking) return;
@@ -2332,7 +2402,10 @@ const Net={
     }
     this.matchLocking=true;
     const lineup=this.buildLineup();
-    const names=lineup.filter(s=>s.role!=='ai').map(s=>s.name+'('+CHARACTERS[s.charIdx].name+')').join(' · ');
+    const humans=lineup.filter(s=>s.role!=='ai');
+    const ais=lineup.filter(s=>s.role==='ai');
+    const names=humans.map(s=>s.name+'('+CHARACTERS[s.charIdx].name+')').join(' · ')
+      +(ais.length?(' · 人机×'+ais.length):' · 无人机');
     this.broadcastAll({type:'match_lock', lineup, names, seconds:3});
     this.runMatchLock(lineup, names, 3);
   },
@@ -2340,7 +2413,7 @@ const Net={
     this.matchLocking=true;
     const lock=$('match-lock'), num=$('match-lock-num'), sub=$('match-lock-sub');
     if(lock) lock.classList.add('show');
-    if(sub) sub.textContent=(names||'阵容已锁定')+' · 空位人机补齐';
+    if(sub) sub.textContent=(names||'阵容已锁定')+' · 共 '+((lineup&&lineup.length)||0)+' 车发车';
     let left=Math.max(1, seconds|0);
     const go=()=>{
       if(lock) lock.classList.remove('show');
@@ -2415,11 +2488,14 @@ const Net={
     return this.players.map(p=>({ id:p.id, name:p.name, charIdx:p.charIdx, ready:!!p.ready, isHost:!!p.isHost }));
   },
   syncLobby(){
-    if(this.mode==='host') this.broadcastAll({ type:'lobby', players:this.publicPlayers() });
+    this.ensureAiPads();
+    if(this.mode==='host') this.broadcastAll({ type:'lobby', players:this.publicPlayers(), aiPads:this.aiPads.slice() });
     this.renderRoster(); this.renderPartyBar(); this.updateLobbyButtons();
   },
-  setPlayers(list){
+  setPlayers(list, aiPads){
     this.players=list||[];
+    if(aiPads) this.aiPads=aiPads.map(v=>!!v);
+    this.ensureAiPads();
     this.renderRoster(); this.renderPartyBar(); this.updateLobbyButtons();
   },
   updateLocalChar(charIdx, name){
@@ -2443,6 +2519,7 @@ const Net={
     setOnlineStatus(me.ready?'已就绪 · 等待房主开赛':'已取消就绪','ok');
   },
   buildLineup(){
+    this.ensureAiPads();
     const humans=this.players.slice(0, MAX_HUMANS).map(p=>({
       pid:p.id, name:p.name, charIdx:(p.charIdx!=null?p.charIdx:0)|0,
       role:p.isHost?'host':'guest'
@@ -2451,14 +2528,14 @@ const Net={
     humans.forEach(h=>{ if(!used.has(h.charIdx)) used.add(h.charIdx); });
     const pool=CHARACTERS.map((_,i)=>i).filter(i=>!used.has(i));
     shuffleArr(pool);
-    let aiNeed=KART_COUNT-humans.length;
     const lineup=humans.slice();
     let aiN=0;
-    while(aiNeed>0){
+    for(let i=humans.length;i<KART_COUNT;i++){
+      if(!this.aiPads[i]) continue;
       const ci=pool.length?pool.shift():(aiN%CHARACTERS.length);
-      lineup.push({ pid:'ai-'+(aiN++), name:'人机', charIdx:ci, role:'ai' });
-      aiNeed--;
+      lineup.push({ pid:'ai-'+(aiN++), name:'人机'+(aiN), charIdx:ci, role:'ai' });
     }
+    if(lineup.length<1) lineup.push(...humans);
     shuffleArr(lineup);
     return lineup;
   },
@@ -2467,7 +2544,9 @@ const Net={
     if(!this.mode||!this.players.length){ box.classList.add('hidden'); this.renderMatchSummary(); return; }
     box.classList.remove('hidden');
     const title=$('roster-title'); if(title) title.style.display='block';
+    this.ensureAiPads();
     const humans=this.players;
+    const hostEdit=this.mode==='host';
     let html='';
     for(let i=0;i<KART_COUNT;i++){
       if(i<humans.length){
@@ -2483,10 +2562,13 @@ const Net={
           +'<div class="ls-name">'+(p.name||'车手')+(me?'（我）':'')+(p.isHost?' · 房主':'')+'</div>'
           +'<div class="ls-char">车手 <b style="color:'+ch.color+'">'+ch.name+' · '+ch.title+'</b></div></div>';
       }else{
-        html+='<div class="lobby-slot ai"><div class="ls-top"><span class="ls-seat">座位 '+(i+1)+'</span>'
-          +'<span class="ls-tag ai">人机补位</span></div>'
-          +'<div class="ls-name">空位 · 开赛自动填入</div>'
-          +'<div class="ls-char">等待真人加入，或由 AI 驾驶</div></div>';
+        const on=!!this.aiPads[i];
+        const cls='lobby-slot '+(on?'ai on':'empty-seat')+(hostEdit?' ai-toggle':'');
+        html+='<div class="'+cls+'"'+(hostEdit?' data-ai-seat="'+i+'" title="点击切换人机参赛"':'')+'>'
+          +'<div class="ls-top"><span class="ls-seat">座位 '+(i+1)+'</span>'
+          +'<span class="ls-tag '+(on?'ai':'empty')+'">'+(on?'人机参赛':'空位不开')+'</span></div>'
+          +'<div class="ls-name">'+(on?'人机车手':'本局不参赛')+'</div>'
+          +'<div class="ls-char">'+(hostEdit?(on?'点击关闭人机':'点击开启人机'):(on?'开赛由 AI 驾驶':'房主已关闭补位'))+'</div></div>';
       }
     }
     box.innerHTML=html;
@@ -2496,6 +2578,7 @@ const Net={
     const bar=$('party-bar'); if(!bar) return;
     if(!this.mode||!this.players.length){ document.body.classList.remove('online-party'); bar.innerHTML=''; return; }
     document.body.classList.add('online-party');
+    this.ensureAiPads();
     let html='';
     for(let i=0;i<KART_COUNT;i++){
       if(i<this.players.length){
@@ -2504,8 +2587,10 @@ const Net={
         const me=p.id===this.myId;
         html+='<div class="party-chip human'+(me?' me':'')+'"><div class="pc-name">'+(p.name||'?')+'</div>'
           +'<div class="pc-char" style="color:'+ch.color+'">'+ch.name+(p.ready?' ✓':'')+'</div></div>';
+      }else if(this.aiPads[i]){
+        html+='<div class="party-chip"><div class="pc-name">人机</div><div class="pc-char">参赛</div></div>';
       }else{
-        html+='<div class="party-chip"><div class="pc-name">人机</div><div class="pc-char">待命</div></div>';
+        html+='<div class="party-chip" style="opacity:.4"><div class="pc-name">空</div><div class="pc-char">不开</div></div>';
       }
     }
     bar.innerHTML=html;
@@ -2545,18 +2630,18 @@ const Net={
         p.name=msg.name||p.name; p.charIdx=msg.charIdx|0;
       }
       const c=this.conns[fromPid];
-      if(c) try{ c.send({ type:'welcome', hostName:LB.getNick(), players:this.publicPlayers(), yourId:fromPid }); }catch(e){}
+      if(c) try{ c.send({ type:'welcome', hostName:LB.getNick(), players:this.publicPlayers(), aiPads:this.aiPads.slice(), yourId:fromPid }); }catch(e){}
       setOnlineStatus('「'+(msg.name||'车手')+'」加入 · 真人 '+this.players.length+'/'+MAX_HUMANS,'ok');
       this.syncLobby();
     }else if(msg.type==='welcome'&&this.mode==='guest'){
       this.myId=msg.yourId||this.myId;
-      this.setPlayers(msg.players||[]);
+      this.setPlayers(msg.players||[], msg.aiPads);
       setOnlineStatus('已进入房间 · 选车后点「我准备好了」','ok');
       this._hostReady=true; this.updateLobbyButtons();
       this._lastPong=Date.now(); this.startHeartbeat(); this.setConnDot(true);
       this.setRoomUI(true);
     }else if(msg.type==='lobby'){
-      this.setPlayers(msg.players||[]);
+      this.setPlayers(msg.players||[], msg.aiPads);
     }else if(msg.type==='char'&&this.mode==='host'){
       const p=this.players.find(x=>x.id===(msg.pid||fromPid));
       if(p){ p.charIdx=msg.charIdx|0; if(msg.name) p.name=msg.name; p.ready=false; }
@@ -2629,6 +2714,8 @@ const Net={
     this._roomToken=(tag||'d')+'~'+id;
     this.myId=id;
     this.players=[{ id:id, name:LB.getNick(), charIdx:selectedIdx|0, ready:false, isHost:true }];
+    this.aiPads=[true,true,true,true,true,true];
+    this.ensureAiPads();
     const disp=$('room-code-display');
     disp.textContent=this._roomToken; disp.classList.remove('hidden');
     disp.style.fontSize='clamp(14px,2.4vw,22px)';
@@ -2756,6 +2843,13 @@ $('btn-online-ready').addEventListener('click',()=>{
   Net.setReady(next);
   setOnlineStatus(next?'已就绪 · 等待房主开赛':'已取消就绪','ok');
 });
+$('lobby-roster').addEventListener('click',e=>{
+  const el=e.target.closest('[data-ai-seat]');
+  if(!el) return;
+  Net.toggleAiSeat(+el.getAttribute('data-ai-seat'));
+});
+$('btn-ai-all').addEventListener('click',()=>Net.setAllAiPads(true));
+$('btn-ai-none').addEventListener('click',()=>Net.setAllAiPads(false));
 $('nick-input').addEventListener('change',()=>LB.setNick($('nick-input').value));
 $('btn-back').addEventListener('click',()=>{
   if(Net.mode){ setState('online'); Net.renderRoster(); }
