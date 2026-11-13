@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/covers/12-neon-kart.jpg" alt="neon-kart 项目封面" width="100%"></p>
+
 # 霓虹卡丁车 / NEON KART
 
 开源俯视角霓虹竞速小游戏。支持 **网页即玩**、**联机竞速**、**积分排行榜** 与 **Windows 桌面安装包**。
